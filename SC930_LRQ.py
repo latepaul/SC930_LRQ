@@ -29,6 +29,7 @@ SLIDER_RANGES = [[0,0.5,0.05,0.01],
 
 NANO_PER_SEC=1000000000
 THRESHOLD = 0.01
+flt_thresh = THRESHOLD
 
 dbmspid="<dbmspid>"
 sessid = "<session>"
@@ -41,7 +42,6 @@ def ignore():
     pass
 
 def EndQry(qtext,begin_ts,end_ts,nano_thresh):
-
     dur = GetTimestamp(end_ts) - GetTimestamp(begin_ts)
     if dur > nano_thresh:
         LRQ_list.append([qtext,begin_ts,end_ts,dur,dbmspid,sessid])
@@ -73,8 +73,9 @@ def FindLRQ(path,nano_thresh):
                                    message='Unable to open %s' % path)
         else:
             print "Unable to open '%s'" % path
-        return
+        return 0
 
+    num_qrys = 0
     qtext = ''
     begin_ts = 0
     for line in fh.readlines():
@@ -95,12 +96,16 @@ def FindLRQ(path,nano_thresh):
             end_ts = words[1]
             if start_found:
                 EndQry(qtext,begin_ts,end_ts,nano_thresh)
+                start_found = False
+                num_qrys += 1
+
         elif rectype in SC930_KEYW:
             ignore()
         else:
             qtext = qtext+'\n'+rectype
 
     fh.close()
+    return num_qrys
 
 
 def cli_main(argv=sys.argv):
@@ -288,7 +293,7 @@ class SC930Chooser(Frame):
         return
 
     def FindLRQGo(self):
-        global LRQ_sorted, LRQ_list
+        global LRQ_sorted, LRQ_list, flt_thresh
 
         if len(self.filelist) == 0:
             tkMessageBox.showerror(title='No SC930 Files',
@@ -318,10 +323,26 @@ class SC930Chooser(Frame):
         return
 
 def output_win(root):
-    output_win.qrynum = num_lrq = 0
+    output_win.qrynum = output_win.num_lrq = 0
 
     def write_to_file():
-        pass
+        outputfile = tkFileDialog.asksaveasfilename(
+            parent=None, title='Select Output File',
+            initialfile = 'sc930lrq.txt',
+            filetypes=[('Text File', '*.txt'),
+                                                ('All Files', '*')])
+        of = open(outputfile,"w")
+        for record in LRQ_sorted:
+            of.write("Query:      %s\n" % record[0])
+            of.write("Begin:      %s\n" % record[1])
+            of.write("End:        %s\n" % record[2])
+            of.write("Duration:   %020.9f secs\n" % (float(record[3])/NANO_PER_SEC))
+            of.write("DBMS PID:   %s\n" % record[4])
+            of.write("Session ID: %s\n\n" % record[5])
+
+        of.write("Found %d queries that took longer than %9.4f seconds\n" % (len(LRQ_sorted),THRESHOLD))
+
+        of.close()
 
     def quit_out():
         global LRQ_list, LRQ_sorted
@@ -332,27 +353,28 @@ def output_win(root):
         Owin.destroy()
 
     def populate(qno):
+        global flt_thresh
+
+        title = "Long-Running Queries ( > %6.2fs): %d/%d" % (flt_thresh,qno+1,output_win.num_lrq)
+        Owin.title(title)
+        Owin.qrybox.configure(state='normal')
         Owin.qrybox.delete(1.0,'end')
-        Owin.begin_ts.delete(0,'end')
-        Owin.end_ts.delete(0,'end')
-        Owin.duration.delete(0,'end')
-        Owin.dbms.delete(0,'end')
-        Owin.session.delete(0,'end')
+        Owin.qrybox.insert(1.0,LRQ_sorted[qno][0])
+        Owin.qrybox.configure(state='disabled')
         Owin.qryno.delete(0,'end')
         Owin.qryno.insert(0,qno+1)
-        Owin.qrybox.insert(1.0,LRQ_sorted[qno][0])
-        Owin.begin_ts.insert(0,LRQ_sorted[qno][1])
-        Owin.end_ts.insert(0,LRQ_sorted[qno][2])
+        Owin.begin_ts.configure(text=LRQ_sorted[qno][1])
+        Owin.end_ts.configure(text=LRQ_sorted[qno][2])
         show_dur = "%18.9f" % (float(LRQ_sorted[qno][3]) /NANO_PER_SEC)
-        Owin.duration.insert(0,show_dur)
-        Owin.dbms.insert(0,LRQ_sorted[qno][4])
-        Owin.session.insert(0,LRQ_sorted[qno][5])
+        Owin.duration.configure(text=show_dur)
+        Owin.dbms.configure(text=LRQ_sorted[qno][4])
+        Owin.session.configure(text=LRQ_sorted[qno][5])
 
 
     def Right():
         print "Right"
 
-        if output_win.qrynum < num_lrq-1:
+        if output_win.qrynum < output_win.num_lrq-1:
             output_win.qrynum += 1
             populate(output_win.qrynum)
 
@@ -364,14 +386,14 @@ def output_win(root):
 
     def First():
         print "First"
-        if num_lrq > 0:
+        if output_win.num_lrq > 0:
             output_win.qrynum = 0
             populate(output_win.qrynum)
 
     def Last():
         print "Last"
-        if num_lrq > 0:
-            output_win.qrynum = num_lrq-1
+        if output_win.num_lrq > 0:
+            output_win.qrynum = output_win.num_lrq-1
             populate(output_win.qrynum)
 
     Owin = Toplevel(root)
@@ -379,68 +401,70 @@ def output_win(root):
     Owin.style.theme_use("default")
 
     l1 = Label(Owin, text="QryNo:")
-    l1.grid(row=0,column=0,sticky=(W),padx=5)
+    l1.grid(row=0,column=0,sticky=(W),padx=5,pady=5)
     Owin.qryno = Entry(Owin,width=5,justify=RIGHT)
-    Owin.qryno.grid(row=0,column=1,padx=5,sticky=(E))
+    Owin.qryno.grid(row=0,column=1,padx=5,pady=5,sticky=(E))
     l2 = Label(Owin, text="Begin:")
     l2.grid(row=0,column=2,sticky=(W),padx=5)
-    Owin.begin_ts = Entry(Owin,width=22,justify=RIGHT)
-    Owin.begin_ts.grid(row=0,column=3,sticky=(E),padx=5)
-    l3 = Label(Owin, text="Duration (ns):")
+    Owin.begin_ts = Label(Owin, text="000000/000000", bd=3, relief=RIDGE)
+    Owin.begin_ts.grid(row=0,column=3,sticky=(E),pady=5,padx=5)
+    l3 = Label(Owin, text="Duration (s):")
     l3.grid(row=1,column=0,sticky=(W),padx=5)
-    Owin.duration = Entry(Owin,width=18,justify=RIGHT)
+    Owin.duration = Label(Owin, text="0.0", bd=3, relief=RIDGE)
     Owin.duration.grid(row=1,column=1,padx=5,sticky=(E))
     l4 = Label(Owin, text="End:")
     l4.grid(row=1,column=2,sticky=(W),padx=5)
-    Owin.end_ts = Entry(Owin,width=22,justify=RIGHT)
+    Owin.end_ts = Label(Owin, text="000000/000000", bd=3, relief=RIDGE)
     Owin.end_ts.grid(row=1,column=3,sticky=(E),padx=5)
     l5 = Label(Owin, text="DBMS Pid:")
     l5.grid(row=2,column=0,sticky=(W),padx=5)
-    Owin.dbms = Entry(Owin,width=10,justify=RIGHT)
+    Owin.dbms = Label(Owin, text="dbms", bd=3, relief=RIDGE)
     Owin.dbms.grid(row=2,column=1,padx=5,sticky=(E))
     l6 = Label(Owin, text="Session id:")
     l6.grid(row=2,column=2,sticky=(W),padx=5)
-    Owin.session = Entry(Owin,width=10,justify=RIGHT)
+    Owin.session = Label(Owin, text="session", bd=3, relief=RIDGE)
     Owin.session.grid(row=2,column=3,padx=5,sticky=(E))
     Owin.qrybox = ScrolledText.ScrolledText(Owin,width=200,height=16)
     Owin.qrybox.grid(row=3,column=0,padx=5,columnspan=5)
-    # Owin.qrybox.grid_rowconfigure(3,weight=1)
-    # Owin.qrybox.grid_columnconfigure(0,weight=1)
+    Owin.qrybox.configure(state='disabled')
 
     ButtFrame1 = Frame(Owin,relief=SUNKEN, borderwidth=1)
-    ButtFrame1.grid(row=4,column=1,padx=5,columnspan=3)
+    ButtFrame1.grid(row=4,column=1,padx=5,pady=5,columnspan=2)
     FirstButton = Button(ButtFrame1, text = "<<", command=First)
-    FirstButton.grid(row=0,column=0,padx=15,sticky=(W))
+    FirstButton.grid(row=0,column=0,padx=5,sticky=(W))
     LeftButton = Button(ButtFrame1,text="<",command=Left)
-    LeftButton.grid(row=0,column=1,padx=15,pady=5,sticky=(W))
+    LeftButton.grid(row=0,column=1,padx=5,pady=5,sticky=(W))
     RightButton = Button(ButtFrame1, text=">",command=Right)
-    RightButton.grid(row=0,column=2,padx=15,pady=5,sticky=(E))
+    RightButton.grid(row=0,column=2,padx=5,pady=5,sticky=(E))
     LastButton = Button(ButtFrame1, text = ">>", command=Last)
-    LastButton.grid(row=0,column=3,padx=15,pady=5,sticky=(E))
+    LastButton.grid(row=0,column=3,padx=5,pady=5,sticky=(E))
     ButtFrame2 = Frame(Owin,relief=SUNKEN, borderwidth=1)
-    ButtFrame2.grid(row=4,column=4,padx=5,sticky=(E))
+    ButtFrame2.grid(row=4,column=4,padx=5,pady=5,sticky=(E))
     saveButton = Button(ButtFrame2, text="save to file", command=write_to_file)
     saveButton.grid(row=0,column=0,padx=5,pady=5)
     quitButton = Button(ButtFrame2, text="close", command=quit_out)
     quitButton.grid(row=0,column=1,padx=5,pady=5)
-    Owin.columnconfigure(0,weight=1)
-    Owin.columnconfigure(1,weight=1)
-    Owin.columnconfigure(2,weight=1)
-    Owin.columnconfigure(3,weight=1)
+    Owin.columnconfigure(0,weight=0)
+    Owin.columnconfigure(1,weight=0)
+    Owin.columnconfigure(2,weight=0)
+    Owin.columnconfigure(3,weight=0)
+    Owin.columnconfigure(4,weight=1)
     Owin.rowconfigure(0,weight=0)
     Owin.rowconfigure(1,weight=0)
     Owin.rowconfigure(2,weight=0)
-    Owin.rowconfigure(3,weight=3)
-    Owin.rowconfigure(4,weight=1)
-    num_lrq = len(LRQ_sorted)
+    Owin.rowconfigure(3,weight=1)
+    Owin.rowconfigure(4,weight=0)
+    Owin.minsize(600,175)
 
-    title = "Long-Running Queries: 1/"+"%d" % num_lrq
+    output_win.num_lrq = len(LRQ_sorted)
+
+    title = "Long-Running Queries: 1/"+"%d" % output_win.num_lrq
     Owin.title(title)
     Owin.geometry('700x400')
     Owin.grab_set()
     Owin.protocol("WM_DELETE_WINDOW",quit_out)
-    qrynum = num_lrq-1
-    if num_lrq > 0:
+    qrynum = output_win.num_lrq-1
+    if output_win.num_lrq > 0:
         qrynum = 0
         populate(qrynum)
 
@@ -458,4 +482,3 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         sys.exit(cli_main())
     sys.exit(gui_main())
-
