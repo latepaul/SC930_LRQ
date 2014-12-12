@@ -363,12 +363,16 @@ def output_win(root):
         Owin.qrybox.configure(state='disabled')
         Owin.qryno.delete(0,'end')
         Owin.qryno.insert(0,qno+1)
-        Owin.begin_ts.configure(text=LRQ_sorted[qno][1])
-        Owin.end_ts.configure(text=LRQ_sorted[qno][2])
-        show_dur = "%18.9f" % (float(LRQ_sorted[qno][3]) /NANO_PER_SEC)
-        Owin.duration.configure(text=show_dur)
-        Owin.dbms.configure(text=LRQ_sorted[qno][4])
-        Owin.session.configure(text=LRQ_sorted[qno][5])
+        txt = "%s" % LRQ_sorted[qno][1]
+        Owin.begin_ts.configure(text=txt)
+        txt = "%s" % LRQ_sorted[qno][2]
+        Owin.end_ts.configure(text=txt)
+        txt = "%18.9f" % (float(LRQ_sorted[qno][3]) /NANO_PER_SEC)
+        Owin.duration.configure(text=txt)
+        txt = "%s" % LRQ_sorted[qno][4]
+        Owin.dbms.configure(text=txt)
+        txt = "%s" % LRQ_sorted[qno][5]
+        Owin.session.configure(text=txt)
 
 
     def Right():
@@ -402,7 +406,7 @@ def output_win(root):
 
     l1 = Label(Owin, text="QryNo:")
     l1.grid(row=0,column=0,sticky=(W),padx=5,pady=5)
-    Owin.qryno = Entry(Owin,width=5,justify=RIGHT)
+    Owin.qryno = Entry(Owin,width=8,justify=RIGHT)
     Owin.qryno.grid(row=0,column=1,padx=5,pady=5,sticky=(E))
     l2 = Label(Owin, text="Begin:")
     l2.grid(row=0,column=2,sticky=(W),padx=5)
@@ -424,7 +428,7 @@ def output_win(root):
     l6.grid(row=2,column=2,sticky=(W),padx=5,pady=5)
     Owin.session = Label(Owin, text="session", bd=3, relief=RIDGE)
     Owin.session.grid(row=2,column=3,padx=5,sticky=(E))
-    Owin.qrybox = ScrolledText.ScrolledText(Owin,width=200,height=16)
+    Owin.qrybox = ScrolledText.ScrolledText(Owin,width=250,height=50)
     Owin.qrybox.grid(row=3,column=0,padx=5,columnspan=5)
     Owin.qrybox.configure(state='disabled')
 
