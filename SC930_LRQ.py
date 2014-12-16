@@ -44,8 +44,16 @@ def ignore():
 def EndQry(qtext,begin_ts,end_ts,nano_thresh):
     dur = GetTimestamp(end_ts) - GetTimestamp(begin_ts)
     if dur > nano_thresh:
-        LRQ_list.append([qtext,begin_ts,end_ts,dur,dbmspid,sessid])
-    return
+        try:
+            LRQ_list.append([qtext,begin_ts,end_ts,dur,dbmspid,sessid])
+        except:
+            if gui:
+                tkMessageBox.showerror(title='Failed to expand list',
+                                       message='Failed to add an item to the LRQ list, possibly out of memory, try a higher threshold or fewer, smaller trace files' )
+            else:
+                print 'Failed to add an item to the LRQ list, possibly out of memory, try a higher threshold or fewer, smaller trace files'
+            return False
+    return True
 
 def GetTimestamp(tstxt):
     t = tstxt.split('/')
@@ -95,9 +103,12 @@ def FindLRQ(path,nano_thresh):
         elif rectype in SC930_EQY:
             end_ts = words[1]
             if start_found:
-                EndQry(qtext,begin_ts,end_ts,nano_thresh)
-                start_found = False
-                num_qrys += 1
+                if not EndQry(qtext,begin_ts,end_ts,nano_thresh):
+                    fh.close()
+                    return num_qrys
+                else:
+                    start_found = False
+                    num_qrys += 1
 
         elif rectype in SC930_KEYW:
             ignore()
@@ -331,7 +342,16 @@ def output_win(root):
             initialfile = 'sc930lrq.txt',
             filetypes=[('Text File', '*.txt'),
                                                 ('All Files', '*')])
-        of = open(outputfile,"w")
+        try:
+            of = open(outputfile,"w")
+        except:
+            if gui:
+                tkMessageBox.showerror(title='Failed Opening file',
+                                       message='Unable to open %s' % outputfile)
+            else:
+                print "Unable to open '%s'" % outputfile
+            return
+
         for record in LRQ_sorted:
             of.write("Query:      %s\n" % record[0])
             of.write("Begin:      %s\n" % record[1])
@@ -376,29 +396,37 @@ def output_win(root):
 
 
     def Right():
-        print "Right"
-
         if output_win.qrynum < output_win.num_lrq-1:
             output_win.qrynum += 1
             populate(output_win.qrynum)
 
     def Left():
-        print "Left"
         if output_win.qrynum > 0:
             output_win.qrynum -= 1
             populate(output_win.qrynum)
 
     def First():
-        print "First"
         if output_win.num_lrq > 0:
             output_win.qrynum = 0
             populate(output_win.qrynum)
 
     def Last():
-        print "Last"
         if output_win.num_lrq > 0:
             output_win.qrynum = output_win.num_lrq-1
             populate(output_win.qrynum)
+
+    def focus_left_qryno(newtext_P):
+        jump_to_qry()
+        return newtext_P
+
+    def enter_pressed(event):
+        jump_to_qry()
+
+    def jump_to_qry():
+        entered_no = int(Owin.qryno.get())
+        if entered_no > 0 and entered_no <= output_win.num_lrq:
+            output_win.qrynum = entered_no - 1;
+        populate(output_win.qrynum)
 
     Owin = Toplevel(root)
     Owin.style = Style()
@@ -406,8 +434,10 @@ def output_win(root):
 
     l1 = Label(Owin, text="QryNo:")
     l1.grid(row=0,column=0,sticky=(W),padx=5,pady=5)
-    Owin.qryno = Entry(Owin,width=8,justify=RIGHT)
+    vcmd = (Owin.register(focus_left_qryno),'%P')
+    Owin.qryno = Entry(Owin,width=8,justify=RIGHT, validate='focusout',validatecommand=vcmd)
     Owin.qryno.grid(row=0,column=1,padx=5,pady=5,sticky=(E))
+    Owin.qryno.bind('<Return>',enter_pressed)
     l2 = Label(Owin, text="Begin:")
     l2.grid(row=0,column=2,sticky=(W),padx=5)
     Owin.begin_ts = Label(Owin, text="000000/000000", bd=3, relief=RIDGE)

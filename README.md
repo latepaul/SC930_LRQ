@@ -12,16 +12,16 @@ ToDO list:
 * 'short' query type ('insert', 'delete' etc)
 * ~~DBMS Pid & Session ID from filename~~
 * ~~log text area~~ 
-* or 'save to file'
+* ~~or 'save to file'~~
 * ~~file-card version~~
 * ~~sort - largest first?~~
 * sort an option or a prompt?
 * CLI flags
 * initial screen resizable
 * search
-* out of memory protection?
+* ~out of memory protection?~
 * report format (header, filenames etc)
 * add files to list (multiple locations)
-* jump to qryno
+* ~jump to qryno~
 * ~~protect display only fields~~
 * ~~non-editable fields as labels not entry fields~~
