@@ -7,8 +7,6 @@ from ttk import Entry,Style
 import tkFileDialog
 import ScrolledText
 import tkMessageBox
-from pympler.asizeof import asizeof
-
 
 SC930_QQRY = ["QRY","QUEL","REQUEL","REQUERY"]
 SC930_OQRY = ["ABORT", "ABSAVE", "ADD-CURSORID", "AUTOCOMMIT", "BGNTRANS", "CLOSE",
@@ -129,8 +127,12 @@ def cli_main(argv=sys.argv):
         print "fullpath=",fullpath
         FindLRQ(fullpath, NANO_PER_SEC * THRESHOLD)
     if sort:
-        LRQ_sorted = sorted(LRQ_list,key=lambda item: item[3], reverse=True)
-        LRQ_list = []
+        try:
+            LRQ_sorted = sorted(LRQ_list,key=lambda item: item[3], reverse=True)
+            LRQ_list = []
+        except:
+            print 'Failed to sort LRQ list - possibly out of memory, try a higher threshold or fewer, smaller trace files'
+            print '(results will not be sorted)'
     else:
         LRQ_sorted = LRQ_list
 
@@ -162,17 +164,9 @@ class SC930Chooser(Frame):
         self.style = Style()
         self.style.theme_use("default")
         frame = Frame(self, relief=RAISED, borderwidth=1)
-        frame.pack(fill=BOTH, expand=1)
-        self.pack(fill=BOTH, expand=1)
+        frame.grid(row=0,column=0,columnspan=4,padx=5,pady=5)
 
-        quitButton = Button(self, text="Quit", command=quit)
-        quitButton.pack(side=RIGHT,padx=5,pady=5)
-        LRQButton = Button(self, text="Find L.R.Q.s",command=self.FindLRQGo)
-        LRQButton.pack(side=RIGHT, padx=5)
-        InfoButton = Button(self,text="Info",command=self.display_info)
-        InfoButton.pack(side=LEFT)
-
-        self.ThreshSlider = Scale(frame,orient=HORIZONTAL,length=500,
+        self.ThreshSlider = Scale(frame,orient=HORIZONTAL,length=450,
                                   from_=0, to=10.0, resolution=1,
                                   tickinterval=1.0, command=self.scale_changed,
                                   showvalue=TRUE)
@@ -180,24 +174,37 @@ class SC930Chooser(Frame):
         self.ThreshSlider.set(5.0)
         self.parent.bind('<Key>',self.scroll_key_left)
         self.max_slider_val = self.ThreshSlider.cget('to')
-        lb =Label(frame,text="threshold:")
-        lb.grid(row=0,column=1,sticky="E")
+        lb =Label(frame,text="Queries longer than:")
+        lb.grid(row=0,column=1,sticky="E",padx=5,pady=5)
 
         vcmd = (self.parent.register(self.focus_left_thresh),'%P')
         self.threshentry = Entry(frame,width=5,validate='focusout',
                                  validatecommand=vcmd)
-        self.threshentry.grid(row=0,column=2,sticky="W")
+        self.threshentry.grid(row=0,column=2,sticky="W",padx=5,pady=5)
         self.threshentry.insert(0,'5.0')
         self.threshentry.bind('<Return>',self.enter_pressed)
         self.enter_pressed('5.0')
         lb2 = Label(frame,text="secs")
-        lb2.grid(row=0,column=3,sticky="W")
+        lb2.grid(row=0,column=3,sticky="W",padx=5,pady=5)
 
         FileButton = Button(frame,text="SC930 Files...",command=self.get_files)
-        FileButton.grid(row=1,column=0,sticky='W')
-        self.filebox = ScrolledText.ScrolledText(frame,height=6)
-        self.filebox.grid(row=2,column=0,columnspan=4)
+        FileButton.grid(row=1,column=0,sticky='W',padx=5,pady=5)
+        self.filebox = ScrolledText.ScrolledText(frame,height=50,width=200)
+        self.filebox.grid(row=2,column=0,columnspan=4,padx=5,pady=5)
         self.filelist = []
+
+        quitButton = Button(self, text="Quit", command=quit)
+        quitButton.grid(row=1,column=3,padx=5,pady=5)
+        LRQButton = Button(self, text="Find L.R.Q.s",command=self.FindLRQGo)
+        LRQButton.grid(row=1,column=2, padx=5)
+        InfoButton = Button(self,text="Info",command=self.display_info)
+        InfoButton.grid(column=0,row=1,sticky=(W))
+        frame.columnconfigure(3,weight=1)
+        frame.rowconfigure(2,weight=1)
+        self.rowconfigure(0,weight=1)
+        self.columnconfigure(0,weight=1)
+        self.pack()
+        self.parent.minsize(675,250)
 
     def scroll_key_left(self,event):
         fw = self.parent.focus_get()
@@ -256,17 +263,12 @@ class SC930Chooser(Frame):
                                     tickinterval=new_tick)
 
     def display_info(self):
-        print "INFO:"
-        print "  ThreshSlider:"
-        print "    from:         %s" % self.ThreshSlider.cget('from')
-        print "    to:           %s" % self.ThreshSlider.cget('to')
-        print "    res:          %s" % self.ThreshSlider.cget('resolution')
-        print "    tickinterval: %s" % self.ThreshSlider.cget('tickinterval')
-        print " "
-        print"   self.max_slider_val: %s" % self.max_slider_val
-        print " "
-        print "  threshentry:"
-        print "    contents:     %s" % self.threshentry.get()
+        msg='SC930 Long-Running-Query Finder'
+        msg = msg + '\n\nby Paul Mason'
+        msg = msg + '\n (c) Actian Corp 2014'
+        msg = msg + '\nSee http://wiki_link for latest version'
+        tkMessageBox.showinfo(title='SC930 LRQ Finder',
+                                   message=msg)
 
 
     def change_thresh_entry(self,value):
@@ -318,17 +320,11 @@ class SC930Chooser(Frame):
             tkMessageBox.showinfo(title='No LRQs',
                                    message='No queries found running longer than the threshold!')
             return
-        print "Pre-sort:"
-        print " LRQ_list - [len,size] = [%d,%d]" % (len(LRQ_list),asizeof(LRQ_list))
-        print " LRQ_sorted - [len,size] = [%d,%d]" % (len(LRQ_sorted),asizeof(LRQ_sorted))
         if sort:
             LRQ_sorted = sorted(LRQ_list,key=lambda item: item[3], reverse=True)
             LRQ_list = []
         else:
             LRQ_sorted = LRQ_list
-        print "Post-sort:"
-        print " LRQ_list - [len,size] = [%d,%d]" % (len(LRQ_list),asizeof(LRQ_list))
-        print " LRQ_sorted - [len,size] = [%d,%d]" % (len(LRQ_sorted),asizeof(LRQ_sorted))
 
         output_win(self.parent)
         return
@@ -497,10 +493,8 @@ def output_win(root):
     Owin.geometry('700x400')
     Owin.grab_set()
     Owin.protocol("WM_DELETE_WINDOW",quit_out)
-    qrynum = output_win.num_lrq-1
     if output_win.num_lrq > 0:
-        qrynum = 0
-        populate(qrynum)
+        populate(0)
 
 def gui_main():
     global gui
