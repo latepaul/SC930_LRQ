@@ -1,5 +1,6 @@
 __author__ = 'Paul Mason'
 
+
 import sys
 import os
 from Tkinter import *
@@ -7,6 +8,8 @@ from ttk import Entry,Style
 import tkFileDialog
 import ScrolledText
 import tkMessageBox
+import constants
+import argparse
 
 SC930_QQRY = ["QRY","QUEL","REQUEL","REQUERY"]
 SC930_OQRY = ["ABORT", "ABSAVE", "ADD-CURSORID", "AUTOCOMMIT", "BGNTRANS", "CLOSE",
@@ -26,15 +29,14 @@ SLIDER_RANGES = [[0,0.5,0.05,0.01],
 
 
 NANO_PER_SEC=1000000000
-THRESHOLD = 0.01
-flt_thresh = THRESHOLD
+DEF_THRESH = 5.0
+flt_thresh = DEF_THRESH
 
 dbmspid="<dbmspid>"
 sessid = "<session>"
 
 LRQ_sorted = LRQ_list = []
 gui = False
-sort = True
 
 def ignore():
     pass
@@ -118,17 +120,38 @@ def FindLRQ(path,nano_thresh):
 
 
 def cli_main(argv=sys.argv):
-    global LRQ_sorted, LRQ_list
+    global LRQ_sorted, LRQ_list, options
 
-    progname = os.path.basename(argv[0])
-    print "This is the CLI dude!"
-    for i in range(len(argv)):
-        fullpath = os.path.normpath(argv[i])
-        print "fullpath=",fullpath
-        FindLRQ(fullpath, NANO_PER_SEC * THRESHOLD)
-    if sort:
+    progname = os.path.basename(argv[0]).split('.')[0]
+
+    parser = argparse.ArgumentParser(usage="%s [-sr] [-t time] [file(s)]" % progname,
+                                     version="%s %s" % (progname,constants.SC930_LRQ_VER))
+    parser.add_argument("-s","--sort",action="store_true",
+                      dest="sort", default=True,help="sort results (longest to shortest)")
+    parser.add_argument("-r",action="store_true",
+                      dest="revsort", default=False,help="reverse sort (shortest to longest)")
+    parser.add_argument("-t","--threshold",
+                      dest="thresh",default=DEF_THRESH,type=float,help="threshold time, in seconds")
+    parser.add_argument("files",default=[],nargs="*")
+
+    options = parser.parse_args()
+
+    if options.revsort:
+        options.sort = True
+
+    if len(options.files) == 0:
+        print "No SC930 files given"
+        return
+
+    for file in options.files:
+        FindLRQ(file, NANO_PER_SEC * options.thresh)
+
+    if options.sort:
         try:
-            LRQ_sorted = sorted(LRQ_list,key=lambda item: item[3], reverse=True)
+            if options.revsort:
+                LRQ_sorted = sorted(LRQ_list,key=lambda item: item[3], reverse=False)
+            else:
+                LRQ_sorted = sorted(LRQ_list,key=lambda item: item[3], reverse=True)
             LRQ_list = []
         except:
             print 'Failed to sort LRQ list - possibly out of memory, try a higher threshold or fewer, smaller trace files'
@@ -143,14 +166,14 @@ def cli_main(argv=sys.argv):
         dur = lrq[3]
         dbmspid = lrq[4]
         sessid = lrq[5]
-        print "Query:     ", qtext
+        print "\nQuery:     ", qtext
         print "Begin:     ", begin_ts
         print "End:       ", end_ts
         print "Duration:   %020.9f secs" % (float (dur)/NANO_PER_SEC)
         print "DBMS PID:  ", dbmspid
         print "Session ID:", sessid
 
-    print "Found %d queries that took longer than %9.4f seconds" % (len(LRQ_sorted),THRESHOLD)
+    print "\nFound %d queries that took longer than %9.4f seconds" % (len(LRQ_sorted),options.thresh)
 
 
 class SC930Chooser(Frame):
@@ -193,7 +216,7 @@ class SC930Chooser(Frame):
         self.filebox.grid(row=2,column=0,columnspan=4,padx=5,pady=5)
         self.filelist = []
 
-        quitButton = Button(self, text="Quit", command=quit)
+        quitButton = Button(self, text="Quit", command=sys.exit)
         quitButton.grid(row=1,column=3,padx=5,pady=5)
         LRQButton = Button(self, text="Find L.R.Q.s",command=self.FindLRQGo)
         LRQButton.grid(row=1,column=2, padx=5)
@@ -266,7 +289,8 @@ class SC930Chooser(Frame):
         msg='SC930 Long-Running-Query Finder'
         msg = msg + '\n\nby Paul Mason'
         msg = msg + '\n (c) Actian Corp 2014'
-        msg = msg + '\nSee http://wiki_link for latest version'
+        msg = msg + '\nSee %s for latest version' % constants.SC930_LRQ_LINK
+        msg = msg + '\nversion %s' % constants.SC930_LRQ_VER
         tkMessageBox.showinfo(title='SC930 LRQ Finder',
                                    message=msg)
 
