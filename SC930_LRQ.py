@@ -4,20 +4,32 @@ __author__ = 'Paul Mason'
 import sys
 import os
 from Tkinter import *
-from ttk import Entry,Style
+#from ttk import Entry,Style
 import tkFileDialog
 import ScrolledText
 import tkMessageBox
-import constants
 import argparse
 
+# SC930_LRQ_VER - version for SC930_LRQ
+# I intend to bump the minor version number for each checked in change.
+SC930_LRQ_VER = '0.5'
+
+# link for latest version of the code
+SC930_LRQ_LNK = 'http://code.ingres.com/samples/python/SC930_LRQ/'
+
+# list of query begins - these are queries with a ? delimiting the SC930 timestamp from the query text
 SC930_QQRY = ["QRY","QUEL","REQUEL","REQUERY"]
+# list of queries which use the : delimiter
 SC930_OQRY = ["ABORT", "ABSAVE", "ADD-CURSORID", "AUTOCOMMIT", "BGNTRANS", "CLOSE",
               "COMMIT", "DELETE CURSOR", "ENDTRANS", "EXECUTE", "EXECUTE PROCEDURE", "FETCH", "PREPCOMMIT",
               "QCLOSE", "QFETCH", "RLSAVE", "ROLLBACK", "SVEPOINT", "UNKNOWN", "XA_COMM", "XA_END",
               "XA_PREP", "XA_RBCK", "XA_STRT", "XA_UNKNOWN"]
+# end of a query
 SC930_EQY = ["EQY"]
-SC930_KEYW = ["TDESC", "COL", "QEP","PARM", "PARMEXEC"]
+# record types to ignore
+SC930_KEYW = ["TDESC", "COL", "QEP","PARM", "PARMEXEC","IVW"]
+
+# ranges for the slider control - [min,max, tick, resolution]
 SLIDER_RANGES = [[0,0.5,0.05,0.01],
                  [0.5,2,0.1,0.1],
                  [2,10,1,1],
@@ -31,8 +43,6 @@ SLIDER_RANGES = [[0,0.5,0.05,0.01],
 NANO_PER_SEC=1000000000
 DEF_THRESH = 5.0
 flt_thresh = DEF_THRESH
-
-
 
 LRQ_sorted = LRQ_list = []
 gui = False
@@ -88,21 +98,21 @@ def FindLRQ(path,nano_thresh):
     qtext = ''
     begin_ts = 0
     for line in fh.readlines():
-        words = line.split(":")
+        words = line.split(":",1)
         rectype = words[0].rstrip('\n')
 
         if rectype in SC930_QQRY:
             start_found = True
-            q = words[1].split('?')
+            q = words[1].split('?',1)
             tstxt = q[0]
             qtext = q[1].rstrip('\n').lstrip()
             begin_ts = tstxt
         elif rectype in SC930_OQRY:
             start_found = True
             qtext = rectype
-            begin_ts = words[1]
+            begin_ts = words[1].split(':')[0]
         elif rectype in SC930_EQY:
-            end_ts = words[1]
+            end_ts = words[1].split(':')[0]
             if start_found:
                 if not EndQry(qtext,begin_ts,end_ts,nano_thresh):
                     fh.close()
@@ -126,7 +136,7 @@ def cli_main(argv=sys.argv):
     progname = os.path.basename(argv[0]).split('.')[0]
 
     parser = argparse.ArgumentParser(usage="%s [-nr] [-t time] [file(s)]" % progname,
-                                     version="%s %s" % (progname,constants.SC930_LRQ_VER))
+                                     version="%s %s" % (progname,SC930_LRQ_VER))
     parser.add_argument("-n","--nosort",action="store_true",
                       dest="nosort", default=False,help="do NOT sort results (default is sort longest to shortest)")
     parser.add_argument("-r",action="store_true",
@@ -191,8 +201,8 @@ class SC930Chooser(Frame):
         self.parent=root
 
         self.parent.title("SC930 Long Running Query Finder")
-        self.style = Style()
-        self.style.theme_use("default")
+        # self.style = Style()
+        # self.style.theme_use("default")
         frame = Frame(self, relief=RAISED, borderwidth=1)
         frame.grid(row=0,column=0,columnspan=4,padx=5,pady=5)
 
@@ -307,8 +317,8 @@ class SC930Chooser(Frame):
         msg='SC930 Long-Running-Query Finder'
         msg = msg + '\n\nby Paul Mason'
         msg = msg + '\n (c) Actian Corp 2014'
-        msg = msg + '\nSee %s for latest version' % constants.SC930_LRQ_LINK
-        msg = msg + '\nThis version %s' % constants.SC930_LRQ_VER
+        msg = msg + '\nSee %s for latest version' % SC930_LRQ_LNK
+        msg = msg + '\nThis version %s' % SC930_LRQ_VER
         tkMessageBox.showinfo(title='SC930 LRQ Finder',
                                    message=msg)
 
@@ -480,8 +490,6 @@ def output_win(root):
         populate(output_win.qrynum)
 
     Owin = Toplevel(root)
-    Owin.style = Style()
-    Owin.style.theme_use("default")
 
     l1 = Label(Owin, text="QryNo:")
     l1.grid(row=0,column=0,sticky=(W),padx=5,pady=5)

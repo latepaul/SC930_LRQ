@@ -27,7 +27,7 @@ The shortcut points to the gui version (SC930_LRQ_gui.exe) but there is a comman
 
 Download:
 
-The latest version of is at http://code.ingres.com/samples/python/SC930_LRQ. To run you need SC930_LRQ.py and constants.py. setup.py and SC930_LRQ_gui.py are required if you wish to build the Windows installer. Note, for this you also need the python package cx_Freeze.
+The latest version of is at http://code.ingres.com/samples/python/SC930_LRQ. To run you need SC930_LRQ.py. setup.py and SC930_LRQ_gui.py are required if you wish to build the Windows installer. Note, for this you also need the python package cx_Freeze.
 
 ToDO list:
 
@@ -35,3 +35,4 @@ ToDO list:
 * 'short' query type ('insert', 'delete' etc)
 * report format (header, filenames etc)
 * progress dialog if loading takes longer than x
+* filter out 'uninteresting' queries (COMMIT, FETCH etc) - possibly the list of SC930_OQRY

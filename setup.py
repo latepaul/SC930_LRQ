@@ -1,7 +1,6 @@
 __author__ = 'Paul Mason'
 
 import sys
-import constants
 from cx_Freeze import setup, Executable
 
 base = None
@@ -23,11 +22,25 @@ executables = [
     Executable('SC930_LRQ_gui.py', base=base, shortcutName='SC930_LRQ',shortcutDir='DesktopFolder') #GUI
 ]
 
+prog_vers = '0.0'
+prog_url ='http://code.ingres.com/samples/python/SC930_LRQ/'
+try:
+    fh = open('SC930_LRQ.py')
+    for line in fh.readlines():
+        check = line[:13]
+        if check == 'SC930_LRQ_VER':
+            prog_vers = line.split("'")[1]
+        if check == 'SC930_LRQ_LNK':
+            prog_url = line.split("'")[1]
+    fh.close()
+except:
+    pass
+
 setup(name='SC930_LRQ',
-      version=constants.SC930_LRQ_VER,
+      version=prog_vers,
       description="SC930 Long-Running Query Finder",
       author='Actian Corporation',
-      url=constants.SC930_LRQ_LINK,
+      url=prog_url,
       options=options,
       executables=executables
       )
