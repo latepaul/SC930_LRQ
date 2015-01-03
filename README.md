@@ -8,10 +8,17 @@ A simple program to find Long Running Queries in SC930 trace files.
 
 To Run:
 
-    python <options> SC930_LRQ.py <filename> [<filename>...]
+    python <-n> <-r> <-t time> SC930_LRQ.py <filename> [<filename>...]
 
 
 If no arguments are given, then a GUI is launched, otherwise it runs in command line mode and output is to the console.
+Options are:
+
+*-s* means do NOT sort results (by default they are sorted longest to shortest)
+
+*-r* means reverse sort (shortest to longest)
+
+*-t* specifies a time threshold in seconds, queries longer than this are considered long-running (default 5.0)
 
 Windows:
 
@@ -24,10 +31,7 @@ The latest version of is at http://code.ingres.com/samples/python/SC930_LRQ. To 
 
 ToDO list:
 
-* formatting options
-* sort an option or a prompt?
 * search for qrytext
 * 'short' query type ('insert', 'delete' etc)
 * report format (header, filenames etc)
-* add files to list (multiple locations)
 * progress dialog if loading takes longer than x

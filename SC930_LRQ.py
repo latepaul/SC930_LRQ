@@ -32,8 +32,7 @@ NANO_PER_SEC=1000000000
 DEF_THRESH = 5.0
 flt_thresh = DEF_THRESH
 
-dbmspid="<dbmspid>"
-sessid = "<session>"
+
 
 LRQ_sorted = LRQ_list = []
 gui = False
@@ -66,6 +65,8 @@ def FindLRQ(path,nano_thresh):
 
     fpath = os.path.basename(path)
     sess_str = fpath[:5]
+    dbmspid="<dbmspid>"
+    sessid = "<session>"
     if sess_str == "sess_":
         sess_parts = fpath.split("_")
         if len(sess_parts) == 3:
@@ -124,10 +125,10 @@ def cli_main(argv=sys.argv):
 
     progname = os.path.basename(argv[0]).split('.')[0]
 
-    parser = argparse.ArgumentParser(usage="%s [-sr] [-t time] [file(s)]" % progname,
+    parser = argparse.ArgumentParser(usage="%s [-nr] [-t time] [file(s)]" % progname,
                                      version="%s %s" % (progname,constants.SC930_LRQ_VER))
-    parser.add_argument("-s","--sort",action="store_true",
-                      dest="sort", default=True,help="sort results (longest to shortest)")
+    parser.add_argument("-n","--nosort",action="store_true",
+                      dest="nosort", default=False,help="do NOT sort results (default is sort longest to shortest)")
     parser.add_argument("-r",action="store_true",
                       dest="revsort", default=False,help="reverse sort (shortest to longest)")
     parser.add_argument("-t","--threshold",
@@ -136,8 +137,9 @@ def cli_main(argv=sys.argv):
 
     options = parser.parse_args()
 
-    if options.revsort:
-        options.sort = True
+    if options.revsort and options.nosort:
+        print "-n and -s are mutually exclusive"
+        return
 
     if len(options.files) == 0:
         print "No SC930 files given"
@@ -146,7 +148,9 @@ def cli_main(argv=sys.argv):
     for file in options.files:
         FindLRQ(file, NANO_PER_SEC * options.thresh)
 
-    if options.sort:
+    if options.nosort:
+        LRQ_sorted = LRQ_list
+    else:
         try:
             if options.revsort:
                 LRQ_sorted = sorted(LRQ_list,key=lambda item: item[3], reverse=False)
@@ -156,8 +160,7 @@ def cli_main(argv=sys.argv):
         except:
             print 'Failed to sort LRQ list - possibly out of memory, try a higher threshold or fewer, smaller trace files'
             print '(results will not be sorted)'
-    else:
-        LRQ_sorted = LRQ_list
+
 
     for lrq in LRQ_sorted:
         qtext = lrq[0]
@@ -210,11 +213,22 @@ class SC930Chooser(Frame):
         lb2 = Label(frame,text="secs")
         lb2.grid(row=0,column=3,sticky="W",padx=5,pady=5)
 
-        FileButton = Button(frame,text="SC930 Files...",command=self.get_files)
-        FileButton.grid(row=1,column=0,sticky='W',padx=5,pady=5)
+        ButtFrame=Frame(frame, borderwidth=1)
+        ButtFrame.grid(row=1,column=0,sticky='W',padx=5,pady=5)
+        Label(ButtFrame,text="SC930 Files").grid(row=0,column=0)
+        FileButton = Button(ButtFrame,text="Add",command=self.add_files)
+        FileButton.grid(row=0,column=1,sticky='W',padx=5,pady=5)
+        ClearButton = Button(ButtFrame,text="Clear", command=self.clear_files)
+        ClearButton.grid(row=0,column=2,sticky='W',padx=5,pady=5)
+        self.sorted = IntVar()
+        self.sortTick = Checkbutton(frame,text="Sort Results?",variable=self.sorted)
+        self.sortTick.grid(row=1,column=1)
+        self.sortTick.select()
         self.filebox = ScrolledText.ScrolledText(frame,height=50,width=200)
         self.filebox.grid(row=2,column=0,columnspan=4,padx=5,pady=5)
+        self.filebox.configure(state='disabled')
         self.filelist = []
+        self.filecount = 0
 
         quitButton = Button(self, text="Quit", command=sys.exit)
         quitButton.grid(row=1,column=3,padx=5,pady=5)
@@ -290,7 +304,7 @@ class SC930Chooser(Frame):
         msg = msg + '\n\nby Paul Mason'
         msg = msg + '\n (c) Actian Corp 2014'
         msg = msg + '\nSee %s for latest version' % constants.SC930_LRQ_LINK
-        msg = msg + '\nversion %s' % constants.SC930_LRQ_VER
+        msg = msg + '\nThis version %s' % constants.SC930_LRQ_VER
         tkMessageBox.showinfo(title='SC930 LRQ Finder',
                                    message=msg)
 
@@ -313,20 +327,31 @@ class SC930Chooser(Frame):
         self.ThreshSlider.set(retval)
         self.ThreshSlider.cget('to')
 
-    def get_files(self):
+    def clear_files(self):
+        self.filebox.configure(state='normal')
+        self.filebox.delete(1.0,'end')
+        self.filebox.configure(state='disabled')
+
+        self.filelist = []
+        self.filecount = 0
+
+    def add_files(self):
         selectedfiles = tkFileDialog.askopenfilename(
             parent=None, title='Select SC930 Session file',
             filetypes=[('SC930 session files', 'sess*'),
                                                 ('All Files', '*')],
             multiple = True)
         if selectedfiles:
-            self.filelist=list(selectedfiles)
-            self.filebox.delete(1.0,'end')
-            idx=1
+            self.filebox.configure(state='normal')
+            idx=self.filecount
             for file in selectedfiles:
+                self.filelist.append(file)
+                idx+=1
                 pos=str(idx)+'.0'
                 self.filebox.insert(pos,os.path.normpath(file)+'\n')
-                idx+=1
+
+            self.filecount = idx
+            self.filebox.configure(state='disabled')
         return
 
     def FindLRQGo(self):
@@ -338,13 +363,15 @@ class SC930Chooser(Frame):
             return
 
         flt_thresh = float(self.threshentry.get())
+
         for file in self.filelist:
             FindLRQ(file,int(NANO_PER_SEC * flt_thresh))
         if len(LRQ_list) == 0:
             tkMessageBox.showinfo(title='No LRQs',
                                    message='No queries found running longer than the threshold!')
             return
-        if sort:
+
+        if self.sorted.get() == 1:
             LRQ_sorted = sorted(LRQ_list,key=lambda item: item[3], reverse=True)
             LRQ_list = []
         else:
@@ -380,7 +407,7 @@ def output_win(root):
             of.write("DBMS PID:   %s\n" % record[4])
             of.write("Session ID: %s\n\n" % record[5])
 
-        of.write("Found %d queries that took longer than %9.4f seconds\n" % (len(LRQ_sorted),THRESHOLD))
+        of.write("Found %d queries that took longer than %9.4f seconds\n" % (len(LRQ_sorted),flt_thresh))
 
         of.close()
 
