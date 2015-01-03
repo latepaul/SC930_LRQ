@@ -7,12 +7,18 @@ from Tkinter import *
 import tkFileDialog
 import ScrolledText
 import tkMessageBox
-import argparse
-from ttk import Progressbar
+from optparse import OptionParser
+
+# use ttk.Progressbar if possible (prettier)
+try:
+    from ttk import Progressbar
+    real_pbar = True
+except:
+    real_pbar = False
 
 # SC930_LRQ_VER - version for SC930_LRQ
 # I intend to bump the minor version number for each checked in change.
-SC930_LRQ_VER = '0.6'
+SC930_LRQ_VER = '0.7'
 
 # link for latest version of the code
 SC930_LRQ_LNK = 'http://code.ingres.com/samples/python/SC930_LRQ/'
@@ -44,6 +50,8 @@ SHOW_PROGBAR_THRESHOLD = 100000
 # number of lines after which to update the progress bar
 PROGBAR_STEP = 1000
 pbar_step = PROGBAR_STEP
+# step as a percentage (used for 'fake' progressbar)
+pbar_perc_step = 1.0
 
 # nanosecs in a second
 NANO_PER_SEC=1000000000
@@ -131,7 +139,11 @@ def FindLRQ(path,nano_thresh,Pwin):
             pupdate += 1
             if pupdate == pbar_step:
                 pupdate = 0
-                Pwin.pbar.step(pbar_step)
+                if real_pbar:
+                    Pwin.pbar.step(pbar_step)
+                else:
+                    pbar_pos = float(Pwin.pbar.get())+pbar_perc_step
+                    Pwin.pbar.set(pbar_pos)
                 Pwin.update()
 
 # split line #1 - get everything before and after first ':'
@@ -180,30 +192,29 @@ def cli_main(argv=sys.argv):
 
 # set up command line args parsing
 
-    parser = argparse.ArgumentParser(usage="%s [-nr] [-t time] [file(s)]" % progname,
+    parser = OptionParser(usage="%s [-nr] [-t time] [file(s)]" % progname,
                                      version="%s %s" % (progname,SC930_LRQ_VER))
-    parser.add_argument("-n","--nosort",action="store_true",
+    parser.add_option("-n","--nosort",action="store_true",
                       dest="nosort", default=False,help="do NOT sort results (default is sort longest to shortest)")
-    parser.add_argument("-r",action="store_true",
+    parser.add_option("-r",action="store_true",
                       dest="revsort", default=False,help="reverse sort (shortest to longest)")
-    parser.add_argument("-t","--threshold",
+    parser.add_option("-t","--threshold",
                       dest="thresh",default=DEF_THRESH,type=float,help="threshold time, in seconds")
-    parser.add_argument("files",default=[],nargs="*")
 
-    options = parser.parse_args()
+    (options,filelist) = parser.parse_args()
 
 # nosort and reverse sort are mutually exclusive
     if options.revsort and options.nosort:
-        print "-n and -s are mutually exclusive"
+        print "-n and -r are mutually exclusive"
         return
 
 # bail if we have no files
-    if len(options.files) == 0:
+    if len(filelist) == 0:
         print "No SC930 files given"
         return
 
 # otherwise run the FindLRQ on the files
-    for file in options.files:
+    for file in filelist:
         FindLRQ(file, NANO_PER_SEC * options.thresh,None)
 
     if options.nosort:
@@ -508,7 +519,7 @@ class SC930Chooser(Frame):
 # this, potentially, lives on after this function and we return it as an object
 # or None if it's closed
 def progress_bar(root, filelist):
-    global pbar_step
+    global pbar_step, pbar_perc_step
 
 # create the window with the initial title
     Pwin = Toplevel(root)
@@ -517,7 +528,13 @@ def progress_bar(root, filelist):
     Pwin.pbar_var = IntVar(Pwin)
 # very simple window with one widget, a 400px progress bar
 # max value is set to the number of files
-    Pwin.pbar = Progressbar(Pwin,orient='horizontal',length=400,mode='determinate',variable=Pwin.pbar_var,maximum=len(filelist))
+
+# create a ttk Progressbar if we can, otherwise fake on with a Scale widget
+    if real_pbar:
+        Pwin.pbar = Progressbar(Pwin,orient='horizontal',length=400,mode='determinate',variable=Pwin.pbar_var,maximum=len(filelist))
+    else:
+        Pwin.pbar = Scale(Pwin,orient='horizontal',length=400,from_ = 0.0,to=float(len(filelist)), label = 'Files',
+                          resolution = 1.0)
     Pwin.pbar.grid(row=0,column=0,padx=15,pady=15)
     Pwin.pbar_var.set(0)
     Pwin.update()
@@ -528,7 +545,11 @@ def progress_bar(root, filelist):
     linecount=0
     for file in filelist:
        l = scanfile(file)
-       Pwin.pbar.step(1)
+       if real_pbar:
+            Pwin.pbar.step(1)
+       else:
+            pbar_pos= Pwin.pbar.get() + 1.0
+            Pwin.pbar.set(pbar_pos)
        Pwin.update()
        if l != -1:
            linecount += l
@@ -541,8 +562,13 @@ def progress_bar(root, filelist):
 # this is the point where we may decide not to show the progress bar
     if linecount > SHOW_PROGBAR_THRESHOLD:
         Pwin.title('Scanning files...(checking queries)')
-        Pwin.pbar.configure(maximum=linecount)
-        Pwin.pbar.start()
+        if real_pbar:
+            Pwin.pbar.configure(maximum=linecount)
+            Pwin.pbar.start()
+        else:
+            Pwin.pbar.configure(to=100.0, resolution = 0.1, label = 'Progress %')
+            Pwin.pbar.set(0.0)
+            pbar_perc_step = (pbar_step * 100.0) / float(linecount)
         Pwin.update()
         return Pwin
     else:
