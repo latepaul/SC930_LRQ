@@ -176,7 +176,11 @@ def cli_main(argv=sys.argv):
         print "DBMS PID:  ", dbmspid
         print "Session ID:", sessid
 
-    print "\nFound %d queries that took longer than %9.4f seconds" % (len(LRQ_sorted),options.thresh)
+    if len(LRQ_sorted) == 1:
+        qword = 'query'
+    else:
+        qword = 'queries'
+    print "\nFound %d %s that took longer than %9.4f seconds" % (len(LRQ_sorted),qword,options.thresh)
 
 
 class SC930Chooser(Frame):
