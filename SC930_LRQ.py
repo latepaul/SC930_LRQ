@@ -4,15 +4,15 @@ __author__ = 'Paul Mason'
 import sys
 import os
 from Tkinter import *
-#from ttk import Entry,Style
 import tkFileDialog
 import ScrolledText
 import tkMessageBox
 import argparse
+from ttk import Progressbar
 
 # SC930_LRQ_VER - version for SC930_LRQ
 # I intend to bump the minor version number for each checked in change.
-SC930_LRQ_VER = '0.5'
+SC930_LRQ_VER = '0.6'
 
 # link for latest version of the code
 SC930_LRQ_LNK = 'http://code.ingres.com/samples/python/SC930_LRQ/'
@@ -39,17 +39,27 @@ SLIDER_RANGES = [[0,0.5,0.05,0.01],
                  [500,1000,100,1],
                  [1000,3600,250,1]]
 
+# threshold number of lines above which to display a progress bar
+SHOW_PROGBAR_THRESHOLD = 100000
+# number of lines after which to update the progress bar
+PROGBAR_STEP = 1000
+pbar_step = PROGBAR_STEP
 
+# nanosecs in a second
 NANO_PER_SEC=1000000000
+
+# thresh time - in seconds
 DEF_THRESH = 5.0
 flt_thresh = DEF_THRESH
 
 LRQ_sorted = LRQ_list = []
 gui = False
 
+# ignore a record
 def ignore():
     pass
 
+# hit end of query record
 def EndQry(qtext,begin_ts,end_ts,nano_thresh):
     dur = GetTimestamp(end_ts) - GetTimestamp(begin_ts)
     if dur > nano_thresh:
@@ -64,15 +74,28 @@ def EndQry(qtext,begin_ts,end_ts,nano_thresh):
             return False
     return True
 
+# turn a timestamp in SC930 format into a number
 def GetTimestamp(tstxt):
     t = tstxt.split('/')
     secs = int(t[0])
     nano = int(t[1])
     return ((secs * NANO_PER_SEC) + nano)
 
-def FindLRQ(path,nano_thresh):
+# count the lines in a file
+def scanfile(path):
+    try:
+        fh=open(path,'r')
+    except:
+        return -1
+    l=len(fh.readlines())
+    fh.close
+    return l
+
+# find the LRQs in a file
+def FindLRQ(path,nano_thresh,Pwin):
     global dbmspid, sessid, LRQ_list
 
+# get the DBMS pid and SESSION id from the file name if we can
     fpath = os.path.basename(path)
     sess_str = fpath[:5]
     dbmspid="<dbmspid>"
@@ -94,35 +117,54 @@ def FindLRQ(path,nano_thresh):
             print "Unable to open '%s'" % path
         return 0
 
+# scan the file
+    pupdate = 0
     num_qrys = 0
     qtext = ''
     begin_ts = 0
+
+# for each line check the record type
     for line in fh.readlines():
+
+# see if we need to update progress bar
+        if Pwin != None:
+            pupdate += 1
+            if pupdate == pbar_step:
+                pupdate = 0
+                Pwin.pbar.step(pbar_step)
+                Pwin.update()
+
+# split line #1 - get everything before and after first ':'
         words = line.split(":",1)
         rectype = words[0].rstrip('\n')
 
         if rectype in SC930_QQRY:
+# for a new query-query get the timestamp and query text
             start_found = True
             q = words[1].split('?',1)
             tstxt = q[0]
             qtext = q[1].rstrip('\n').lstrip()
             begin_ts = tstxt
         elif rectype in SC930_OQRY:
+# for a new other-query get the timestamp and query text
             start_found = True
             qtext = rectype
             begin_ts = words[1].split(':')[0]
         elif rectype in SC930_EQY:
+# for an EQY end the query
             end_ts = words[1].split(':')[0]
             if start_found:
                 if not EndQry(qtext,begin_ts,end_ts,nano_thresh):
+# if EndQry failed it means we probably ran out of memory so close the file and return
                     fh.close()
                     return num_qrys
                 else:
                     start_found = False
                     num_qrys += 1
-
+# for any other SC930 record type - ignore
         elif rectype in SC930_KEYW:
-            ignore()
+            pass
+# anything else must be query text wrapped over lines so append it to current query text
         else:
             qtext = qtext+'\n'+rectype
 
@@ -130,10 +172,13 @@ def FindLRQ(path,nano_thresh):
     return num_qrys
 
 
+# launch command line version
 def cli_main(argv=sys.argv):
     global LRQ_sorted, LRQ_list, options
 
     progname = os.path.basename(argv[0]).split('.')[0]
+
+# set up command line args parsing
 
     parser = argparse.ArgumentParser(usage="%s [-nr] [-t time] [file(s)]" % progname,
                                      version="%s %s" % (progname,SC930_LRQ_VER))
@@ -147,16 +192,19 @@ def cli_main(argv=sys.argv):
 
     options = parser.parse_args()
 
+# nosort and reverse sort are mutually exclusive
     if options.revsort and options.nosort:
         print "-n and -s are mutually exclusive"
         return
 
+# bail if we have no files
     if len(options.files) == 0:
         print "No SC930 files given"
         return
 
+# otherwise run the FindLRQ on the files
     for file in options.files:
-        FindLRQ(file, NANO_PER_SEC * options.thresh)
+        FindLRQ(file, NANO_PER_SEC * options.thresh,None)
 
     if options.nosort:
         LRQ_sorted = LRQ_list
@@ -171,7 +219,7 @@ def cli_main(argv=sys.argv):
             print 'Failed to sort LRQ list - possibly out of memory, try a higher threshold or fewer, smaller trace files'
             print '(results will not be sorted)'
 
-
+# output the results
     for lrq in LRQ_sorted:
         qtext = lrq[0]
         begin_ts = lrq[1]
@@ -192,7 +240,7 @@ def cli_main(argv=sys.argv):
         qword = 'queries'
     print "\nFound %d %s that took longer than %9.4f seconds" % (len(LRQ_sorted),qword,options.thresh)
 
-
+# Initial window - select files to work on, set threshold and choose whether to sort
 class SC930Chooser(Frame):
     global LRQ_sorted, LRQ_list
 
@@ -201,32 +249,43 @@ class SC930Chooser(Frame):
         self.parent=root
 
         self.parent.title("SC930 Long Running Query Finder")
-        # self.style = Style()
-        # self.style.theme_use("default")
         frame = Frame(self, relief=RAISED, borderwidth=1)
         frame.grid(row=0,column=0,columnspan=4,padx=5,pady=5)
 
+# ThreshSlider is the slider control to choose the theshold value
         self.ThreshSlider = Scale(frame,orient=HORIZONTAL,length=450,
                                   from_=0, to=10.0, resolution=1,
                                   tickinterval=1.0, command=self.scale_changed,
                                   showvalue=TRUE)
         self.ThreshSlider.grid(column=0,sticky="W")
         self.ThreshSlider.set(5.0)
-        self.parent.bind('<Key>',self.scroll_key_left)
+# bind it to key events so we can use left and right keys to change it
+        self.parent.bind('<Key>',self.slide_due_to_key)
+
+# this is our record of what the slider value should be
+# at any given time the actual slider widget may not match because we might be about to
+# re-scale
         self.max_slider_val = self.ThreshSlider.cget('to')
+
         lb =Label(frame,text="Queries longer than:")
         lb.grid(row=0,column=1,sticky="E",padx=5,pady=5)
 
+# threshentry is the entry field for the threshold
+# we set the focusout validation command to focus_left_thresh() so we can change the
+# value if someone tabs out of the field
         vcmd = (self.parent.register(self.focus_left_thresh),'%P')
         self.threshentry = Entry(frame,width=5,validate='focusout',
                                  validatecommand=vcmd)
         self.threshentry.grid(row=0,column=2,sticky="W",padx=5,pady=5)
         self.threshentry.insert(0,'5.0')
+# bind the return key so we can change the value on hitting enter in the field
         self.threshentry.bind('<Return>',self.enter_pressed)
         self.enter_pressed('5.0')
+
         lb2 = Label(frame,text="secs")
         lb2.grid(row=0,column=3,sticky="W",padx=5,pady=5)
 
+# ButtFrame - teehee! - seriously, it's a frame to contain buttons
         ButtFrame=Frame(frame, borderwidth=1)
         ButtFrame.grid(row=1,column=0,sticky='W',padx=5,pady=5)
         Label(ButtFrame,text="SC930 Files").grid(row=0,column=0)
@@ -234,33 +293,50 @@ class SC930Chooser(Frame):
         FileButton.grid(row=0,column=1,sticky='W',padx=5,pady=5)
         ClearButton = Button(ButtFrame,text="Clear", command=self.clear_files)
         ClearButton.grid(row=0,column=2,sticky='W',padx=5,pady=5)
+
+# tick box for sort
         self.sorted = IntVar()
         self.sortTick = Checkbutton(frame,text="Sort Results?",variable=self.sorted)
         self.sortTick.grid(row=1,column=1)
         self.sortTick.select()
+
+# filebox is the entry field for the list of files - note set to disabled so user can't edit it
+# (they can select and copy in it though)
+# Also, it's over-sized so that when you expand from the initial size it grows.
         self.filebox = ScrolledText.ScrolledText(frame,height=50,width=200)
         self.filebox.grid(row=2,column=0,columnspan=4,padx=5,pady=5)
         self.filebox.configure(state='disabled')
         self.filelist = []
         self.filecount = 0
 
+# more buttons
         quitButton = Button(self, text="Quit", command=sys.exit)
         quitButton.grid(row=1,column=3,padx=5,pady=5)
         LRQButton = Button(self, text="Find L.R.Q.s",command=self.FindLRQGo)
         LRQButton.grid(row=1,column=2, padx=5)
         InfoButton = Button(self,text="Info",command=self.display_info)
         InfoButton.grid(column=0,row=1,sticky=(W))
+
+# this just makes sure the right bits of the window re-size and the right bits don't
         frame.columnconfigure(3,weight=1)
         frame.rowconfigure(2,weight=1)
         self.rowconfigure(0,weight=1)
         self.columnconfigure(0,weight=1)
         self.pack()
+
+# set by trial and error to smallest size where everything still fits
+# YMMV, different default fonts etc
         self.parent.minsize(675,250)
 
-    def scroll_key_left(self,event):
+# function called to react to key-press and move/adjust slider
+    def slide_due_to_key(self,event):
         fw = self.parent.focus_get()
+
+# don't do anything if we're in thresh entry or the file box
         if fw == self.threshentry or fw == self.filebox:
             return
+
+# get the current values and adjust them
         curr_tick = self.ThreshSlider.cget('tickinterval')
         curr_slideval =  self.ThreshSlider.get()
         if event.keysym == 'Left':
@@ -274,11 +350,12 @@ class SC930Chooser(Frame):
                 new_slideval = 3600
             self.change_thresh(new_slideval)
 
+# we hit enter in the entry field
     def enter_pressed(self,event):
         self.check_scale()
         self.change_thresh(self.threshentry.get())
 
-
+# check whether we need to re-scale the slider
     def check_scale(self):
         scaleval = self.ThreshSlider.get()
         if scaleval < (0.25 * self.max_slider_val):
@@ -286,17 +363,24 @@ class SC930Chooser(Frame):
         if scaleval == self.max_slider_val and scaleval < 3600:
             self.slider_rescale(scaleval)
 
+# change the threshold value after leaving the threshentry field
+# note we're required to return a value (this is a validation command)
+# but we don't use it. But if we don't, stuff don't work!
     def focus_left_thresh(self,newtext_P):
         self.change_thresh(newtext_P)
         return newtext_P
 
+# scale changed due to mouse sliding the slider
     def scale_changed(self,value):
         self.slider_rescale(value)
         self.change_thresh_entry(value)
 
+# perform a rescale on the slider according to new value
     def slider_rescale(self,value):
         new_tick = self.ThreshSlider.cget('tickinterval')
         Range_found = False
+
+# find the range that the value's in
         for r in SLIDER_RANGES:
             if float(value) >= r[0] and float(value) < r[1] and not Range_found:
                 self.max_slider_val = r[1]
@@ -304,15 +388,18 @@ class SC930Chooser(Frame):
                 new_res = r[3]
                 Range_found = True
 
+# if we didn't find the range then we must be too big, so set it to the last one
         if not Range_found:
             self.max_slider_val = r[1]
             new_tick = r[2]
             new_res = r[3]
 
+# change the slider widget itself
         self.ThreshSlider.configure(to=self.max_slider_val,
                                     resolution=new_res,
                                     tickinterval=new_tick)
 
+# this was a show-debug-info button, I decided to keep it to display the version etc
     def display_info(self):
         msg='SC930 Long-Running-Query Finder'
         msg = msg + '\n\nby Paul Mason'
@@ -322,15 +409,15 @@ class SC930Chooser(Frame):
         tkMessageBox.showinfo(title='SC930 LRQ Finder',
                                    message=msg)
 
-
+# change the value in the threshentry field
+# usually this is either called because the slider changed and we want to match it or
+# we need to re-set after going out of limits
     def change_thresh_entry(self,value):
         self.threshentry.delete(0,'end')
         self.threshentry.insert(0,value)
 
+# change the threshold value - re-set to current value if the value is not a valid float
     def change_thresh(self,new_val):
-        '''
-        change_thresh - changes the threshold value
-        '''
         try:
             retval = float(new_val)
         except:
@@ -341,6 +428,7 @@ class SC930Chooser(Frame):
         self.ThreshSlider.set(retval)
         self.ThreshSlider.cget('to')
 
+# clear the filebox
     def clear_files(self):
         self.filebox.configure(state='normal')
         self.filebox.delete(1.0,'end')
@@ -349,7 +437,10 @@ class SC930Chooser(Frame):
         self.filelist = []
         self.filecount = 0
 
+# add files to the file box
     def add_files(self):
+
+# select multiple files - however this can only be from one directory
         selectedfiles = tkFileDialog.askopenfilename(
             parent=None, title='Select SC930 Session file',
             filetypes=[('SC930 session files', 'sess*'),
@@ -368,9 +459,12 @@ class SC930Chooser(Frame):
             self.filebox.configure(state='disabled')
         return
 
+# This is the GO command behind the 'Find LRQs' button
+# its main job is to call FindLRQ for each file
     def FindLRQGo(self):
         global LRQ_sorted, LRQ_list, flt_thresh
 
+# no files means nothing to do
         if len(self.filelist) == 0:
             tkMessageBox.showerror(title='No SC930 Files',
                                    message='No SC930 Files have been selected!')
@@ -378,25 +472,92 @@ class SC930Chooser(Frame):
 
         flt_thresh = float(self.threshentry.get())
 
+# create the progress bar window
+# depending on how much there is to do this will either live briefly and then disappear
+# or still exist. If it's disappeared Pwin will be None
+        Pwin = progress_bar(self.parent,self.filelist)
+
+# process the files in the file list
         for file in self.filelist:
-            FindLRQ(file,int(NANO_PER_SEC * flt_thresh))
+            FindLRQ(file,int(NANO_PER_SEC * flt_thresh), Pwin)
+
+# if we actually have a progress bar window, remove it
+        if Pwin != None:
+            Pwin.grab_release()
+            Pwin.destroy()
+
+# if we didn't find any matching LRQs then say so
         if len(LRQ_list) == 0:
             tkMessageBox.showinfo(title='No LRQs',
                                    message='No queries found running longer than the threshold!')
             return
 
+# sort if required - unlike the CLI we only sort in reverse but since the user can skip to the start
+# and end of the list easily that should be OK
         if self.sorted.get() == 1:
             LRQ_sorted = sorted(LRQ_list,key=lambda item: item[3], reverse=True)
             LRQ_list = []
         else:
             LRQ_sorted = LRQ_list
 
+# open the output window
         output_win(self.parent)
         return
 
+# create the progress bar window
+# this, potentially, lives on after this function and we return it as an object
+# or None if it's closed
+def progress_bar(root, filelist):
+    global pbar_step
+
+# create the window with the initial title
+    Pwin = Toplevel(root)
+    Pwin.title('Scanning files...(counting lines)')
+    Pwin.grab_set()
+    Pwin.pbar_var = IntVar(Pwin)
+# very simple window with one widget, a 400px progress bar
+# max value is set to the number of files
+    Pwin.pbar = Progressbar(Pwin,orient='horizontal',length=400,mode='determinate',variable=Pwin.pbar_var,maximum=len(filelist))
+    Pwin.pbar.grid(row=0,column=0,padx=15,pady=15)
+    Pwin.pbar_var.set(0)
+    Pwin.update()
+
+# count the lines in the files
+# this is pretty fast, but no so fast that it's not worth keeping the progress bar visible for now
+# very large files may take a few seconds, and if you have large numbers of files
+    linecount=0
+    for file in filelist:
+       l = scanfile(file)
+       Pwin.pbar.step(1)
+       Pwin.update()
+       if l != -1:
+           linecount += l
+
+# set the progress bar step amount - make it roughly 0.5% of the total
+    pbar_step = int(linecount/200)
+    if pbar_step < PROGBAR_STEP:
+        pbar_step = PROGBAR_STEP
+
+# this is the point where we may decide not to show the progress bar
+    if linecount > SHOW_PROGBAR_THRESHOLD:
+        Pwin.title('Scanning files...(checking queries)')
+        Pwin.pbar.configure(maximum=linecount)
+        Pwin.pbar.start()
+        Pwin.update()
+        return Pwin
+    else:
+        Pwin.grab_release()
+        Pwin.destroy()
+        return None
+
+# display the output window
+# this is a 'file-card' style interface showing one query at a time
 def output_win(root):
+
+# the number of queries and the query currently displayed
     output_win.qrynum = output_win.num_lrq = 0
 
+# save the results to a file - i.e. create something akin to what CLI mode would have
     def write_to_file():
         outputfile = tkFileDialog.asksaveasfilename(
             parent=None, title='Select Output File',
@@ -425,25 +586,37 @@ def output_win(root):
 
         of.close()
 
+# close the window and give back focus to the initial window
     def quit_out():
         global LRQ_list, LRQ_sorted
 
+# very important - releases memory, these can be big!
         LRQ_list = []
         LRQ_sorted =[]
+
         Owin.grab_release()
         Owin.destroy()
 
+# set the display to query number qno - where qno is our list index (0 ... n-1)
+# not the number we show the user (1...n)
     def populate(qno):
         global flt_thresh
 
+# set the title
         title = "Long-Running Queries ( > %6.2fs): %d/%d" % (flt_thresh,qno+1,output_win.num_lrq)
         Owin.title(title)
+
+# write to the querybox field - need to set to normal and then re-disable
         Owin.qrybox.configure(state='normal')
         Owin.qrybox.delete(1.0,'end')
         Owin.qrybox.insert(1.0,LRQ_sorted[qno][0])
         Owin.qrybox.configure(state='disabled')
+
+# change the query no field
         Owin.qryno.delete(0,'end')
         Owin.qryno.insert(0,qno+1)
+
+# all the other fields are actually labels, just change the text
         txt = "%s" % LRQ_sorted[qno][1]
         Owin.begin_ts.configure(text=txt)
         txt = "%s" % LRQ_sorted[qno][2]
@@ -455,48 +628,68 @@ def output_win(root):
         txt = "%s" % LRQ_sorted[qno][5]
         Owin.session.configure(text=txt)
 
-
+# move to the next query - i.e. the right button
     def Right():
         if output_win.qrynum < output_win.num_lrq-1:
             output_win.qrynum += 1
             populate(output_win.qrynum)
 
+# move to the previous query - i.e. left
     def Left():
         if output_win.qrynum > 0:
             output_win.qrynum -= 1
             populate(output_win.qrynum)
 
+# move to first query
     def First():
         if output_win.num_lrq > 0:
             output_win.qrynum = 0
             populate(output_win.qrynum)
 
+# move to last query
     def Last():
         if output_win.num_lrq > 0:
             output_win.qrynum = output_win.num_lrq-1
             populate(output_win.qrynum)
 
+# we've tabbed out of the qryno field, try to jump to that query
     def focus_left_qryno(newtext_P):
         jump_to_qry()
         return newtext_P
 
+# we've pressed enter in the qryno field, try to jump to that query
     def enter_pressed(event):
         jump_to_qry()
 
+# jump to the query specified by the contents of the qryno field
+# assuming a) it's anumber and b) in range
     def jump_to_qry():
-        entered_no = int(Owin.qryno.get())
+        try:
+            entered_no = int(Owin.qryno.get())
+        except:
+            entered_no = -1
         if entered_no > 0 and entered_no <= output_win.num_lrq:
             output_win.qrynum = entered_no - 1;
         populate(output_win.qrynum)
+
+# create the window
+# note most of the fields are labels where the text is the value
+# the exceptions are the qryno field and the query text box
 
     Owin = Toplevel(root)
 
     l1 = Label(Owin, text="QryNo:")
     l1.grid(row=0,column=0,sticky=(W),padx=5,pady=5)
+
+# register the command for tabbing out of the qryno field
     vcmd = (Owin.register(focus_left_qryno),'%P')
     Owin.qryno = Entry(Owin,width=8,justify=RIGHT, validate='focusout',validatecommand=vcmd)
     Owin.qryno.grid(row=0,column=1,padx=5,pady=5,sticky=(E))
+
+# bind the return key so we can react if we hit enter on the qryno field
     Owin.qryno.bind('<Return>',enter_pressed)
+
+# set up the labels that are actually fields - note these default values should never be seen
     l2 = Label(Owin, text="Begin:")
     l2.grid(row=0,column=2,sticky=(W),padx=5)
     Owin.begin_ts = Label(Owin, text="000000/000000", bd=3, relief=RIDGE)
@@ -517,10 +710,14 @@ def output_win(root):
     l6.grid(row=2,column=2,sticky=(W),padx=5,pady=5)
     Owin.session = Label(Owin, text="session", bd=3, relief=RIDGE)
     Owin.session.grid(row=2,column=3,padx=5,sticky=(E))
+
+# qrybox is where we display the query text. It's oversized so it expands if the window is re-sized
+# and disabled so it can't be changed - though text can be selected and copied
     Owin.qrybox = ScrolledText.ScrolledText(Owin,width=250,height=50)
     Owin.qrybox.grid(row=3,column=0,padx=5,columnspan=5)
     Owin.qrybox.configure(state='disabled')
 
+# create a frame for our navigation buttons
     ButtFrame1 = Frame(Owin,relief=SUNKEN, borderwidth=1)
     ButtFrame1.grid(row=4,column=1,padx=5,pady=5,columnspan=3)
     FirstButton = Button(ButtFrame1, text = "<<", command=First)
@@ -531,12 +728,16 @@ def output_win(root):
     RightButton.grid(row=0,column=2,padx=5,pady=5)
     LastButton = Button(ButtFrame1, text = ">>", command=Last)
     LastButton.grid(row=0,column=3,padx=5,pady=5)
+
+# create a frame for the other two buttown - save and close
     ButtFrame2 = Frame(Owin,relief=SUNKEN, borderwidth=1)
     ButtFrame2.grid(row=4,column=4,padx=5,pady=5,sticky=(E))
     saveButton = Button(ButtFrame2, text="save to file", command=write_to_file)
     saveButton.grid(row=0,column=0,padx=5,pady=5)
     quitButton = Button(ButtFrame2, text="close", command=quit_out)
     quitButton.grid(row=0,column=1,padx=5,pady=5)
+
+# this all just makes sure only the qrybox changes size when we re-size the window
     Owin.columnconfigure(0,weight=0)
     Owin.columnconfigure(1,weight=0)
     Owin.columnconfigure(2,weight=0)
@@ -547,28 +748,46 @@ def output_win(root):
     Owin.rowconfigure(2,weight=0)
     Owin.rowconfigure(3,weight=1)
     Owin.rowconfigure(4,weight=0)
+
+# don't want the user making it so the fields and buttons can't fit
+# based on my screen, with my fonts on Windows - may vary elsewhere
     Owin.minsize(660,175)
 
+# the number of queries in our list
     output_win.num_lrq = len(LRQ_sorted)
 
+# set the title and initial size
     title = "Long-Running Queries: 1/"+"%d" % output_win.num_lrq
     Owin.title(title)
     Owin.geometry('700x400')
+
+# grab focus - initial 'chooser' window will still be open but can't be used
+# while we're interacting with the results window
     Owin.grab_set()
+
+# if the user closes via the window control then quit out nicely (i.e. return focus)
     Owin.protocol("WM_DELETE_WINDOW",quit_out)
+
+# display the first query
     if output_win.num_lrq > 0:
         populate(0)
 
+# launch the GUI
 def gui_main():
     global gui
 
+# flag so we know if we're in the gui - means we can use message boxes rather than messages
     gui = True
+
+# create initial 'chooser' window and begin
     root = Tk()
     root.geometry("700x250+300+300")
     SC930Chooser(root)
     root.mainloop()
     return 0
 
+# if no arguments then launch the GUI otherwise launch the CLI
+# see also comments in SC930_LRQ_gui
 if __name__ == '__main__':
     if len(sys.argv) > 1:
         sys.exit(cli_main())

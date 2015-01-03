@@ -34,5 +34,5 @@ ToDO list:
 * search for qrytext
 * 'short' query type ('insert', 'delete' etc)
 * report format (header, filenames etc)
-* progress dialog if loading takes longer than x
 * filter out 'uninteresting' queries (COMMIT, FETCH etc) - possibly the list of SC930_OQRY
+* bind keys to output window (left, right, home and end) 

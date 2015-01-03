@@ -17,13 +17,20 @@ options = {
     }
 }
 
+# the two executables are the console version of the app (which can still launch the GUI if no args are given)
+# and the GUI.
+# see comments in SC930_LRQ_gui.py for more
 executables = [
-    Executable('SC930_LRQ.py', base=None), # Console version
-    Executable('SC930_LRQ_gui.py', base=base, shortcutName='SC930_LRQ',shortcutDir='DesktopFolder') #GUI
+    # Console app
+    Executable('SC930_LRQ.py', base=None),
+    # windows app
+    Executable('SC930_LRQ_gui.py', base=base, shortcutName='SC930_LRQ',shortcutDir='DesktopFolder')
 ]
 
+# get version and URL strings from SC930_LRQ.py
+# scanning the source file means not having to have a module just for constants
 prog_vers = '0.0'
-prog_url ='http://code.ingres.com/samples/python/SC930_LRQ/'
+prog_url = 'http://code.ingres.com/samples/python/SC930_LRQ/'
 try:
     fh = open('SC930_LRQ.py')
     for line in fh.readlines():
