@@ -1,4 +1,4 @@
-SC930 LRQ Finder (v 0.8)
+SC930 LRQ Finder (v 0.9)
 
 A simple program to find Long Running Queries in SC930 trace files.
 
@@ -36,4 +36,3 @@ ToDO list:
 * search for qrytext
 * 'short' query type ('insert', 'delete' etc)
 * report format (header, filenames etc)
-* bind keys to output window (left, right, home and end) 

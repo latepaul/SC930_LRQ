@@ -18,7 +18,7 @@ except:
 
 # SC930_LRQ_VER - version for SC930_LRQ
 # I intend to bump the minor version number for each checked in change.
-SC930_LRQ_VER = '0.8'
+SC930_LRQ_VER = '0.9'
 
 # link for latest version of the code
 SC930_LRQ_LNK = 'http://code.ingres.com/samples/python/SC930_LRQ/'
@@ -709,6 +709,25 @@ def output_win(root):
             output_win.qrynum = entered_no - 1;
         populate(output_win.qrynum)
 
+    def move_due_to_key(event):
+        if event.keysym == 'Prior' or event.keysym == 'Up':
+            First()
+        if event.keysym == 'Next' or event.keysym == 'Down':
+            Last()
+
+        fw = Owin.focus_get()
+
+# don't do anything if we're in the qryno box as user might be editing a value
+        if fw == Owin.qryno:
+            return
+
+# get the current values and adjust them
+        if event.keysym == 'Left':
+            Left()
+        if event.keysym == 'Right':
+            Right()
+
+
 # create the window
 # note most of the fields are labels where the text is the value
 # the exceptions are the qryno field and the query text box
@@ -722,6 +741,8 @@ def output_win(root):
     vcmd = (Owin.register(focus_left_qryno),'%P')
     Owin.qryno = Entry(Owin,width=8,justify=RIGHT, validate='focusout',validatecommand=vcmd)
     Owin.qryno.grid(row=0,column=1,padx=5,pady=5,sticky=(E))
+
+    Owin.bind('<Key>',move_due_to_key)
 
 # bind the return key so we can react if we hit enter on the qryno field
     Owin.qryno.bind('<Return>',enter_pressed)
