@@ -18,7 +18,7 @@ except:
 
 # SC930_LRQ_VER - version for SC930_LRQ
 # I intend to bump the minor version number for each checked in change.
-SC930_LRQ_VER = '0.7'
+SC930_LRQ_VER = '0.8'
 
 # link for latest version of the code
 SC930_LRQ_LNK = 'http://code.ingres.com/samples/python/SC930_LRQ/'
@@ -100,7 +100,7 @@ def scanfile(path):
     return l
 
 # find the LRQs in a file
-def FindLRQ(path,nano_thresh,Pwin):
+def FindLRQ(path,nano_thresh,Pwin,qryOnly):
     global dbmspid, sessid, LRQ_list
 
 # get the DBMS pid and SESSION id from the file name if we can
@@ -159,9 +159,10 @@ def FindLRQ(path,nano_thresh,Pwin):
             begin_ts = tstxt
         elif rectype in SC930_OQRY:
 # for a new other-query get the timestamp and query text
-            start_found = True
-            qtext = rectype
-            begin_ts = words[1].split(':')[0]
+            if not qryOnly:
+                start_found = True
+                qtext = rectype
+                begin_ts = words[1].split(':')[0]
         elif rectype in SC930_EQY:
 # for an EQY end the query
             end_ts = words[1].split(':')[0]
@@ -192,7 +193,7 @@ def cli_main(argv=sys.argv):
 
 # set up command line args parsing
 
-    parser = OptionParser(usage="%s [-nr] [-t time] [file(s)]" % progname,
+    parser = OptionParser(usage="%s [-nrq] [-t time] [file(s)]" % progname,
                                      version="%s %s" % (progname,SC930_LRQ_VER))
     parser.add_option("-n","--nosort",action="store_true",
                       dest="nosort", default=False,help="do NOT sort results (default is sort longest to shortest)")
@@ -200,6 +201,8 @@ def cli_main(argv=sys.argv):
                       dest="revsort", default=False,help="reverse sort (shortest to longest)")
     parser.add_option("-t","--threshold",
                       dest="thresh",default=DEF_THRESH,type=float,help="threshold time, in seconds")
+    parser.add_option("-q","--qryonly",action="store_true",
+                      dest="qryOnly",default=False,help="only consider query records (QRY,REQUERY,QUEL,REQUEL)")
 
     (options,filelist) = parser.parse_args()
 
@@ -215,7 +218,7 @@ def cli_main(argv=sys.argv):
 
 # otherwise run the FindLRQ on the files
     for file in filelist:
-        FindLRQ(file, NANO_PER_SEC * options.thresh,None)
+        FindLRQ(file, NANO_PER_SEC * options.thresh,None,options.qryOnly)
 
     if options.nosort:
         LRQ_sorted = LRQ_list
@@ -278,23 +281,25 @@ class SC930Chooser(Frame):
 # re-scale
         self.max_slider_val = self.ThreshSlider.cget('to')
 
-        lb =Label(frame,text="Queries longer than:")
-        lb.grid(row=0,column=1,sticky="E",padx=5,pady=5)
+        LongerFrame = Frame(frame)
+        LongerFrame.grid(row=0,column=1)
+        lb =Label(LongerFrame,text="Queries longer than:")
+        lb.grid(row=0,column=0,sticky="E",padx=5,pady=5)
 
 # threshentry is the entry field for the threshold
 # we set the focusout validation command to focus_left_thresh() so we can change the
 # value if someone tabs out of the field
         vcmd = (self.parent.register(self.focus_left_thresh),'%P')
-        self.threshentry = Entry(frame,width=5,validate='focusout',
+        self.threshentry = Entry(LongerFrame,width=5,validate='focusout',
                                  validatecommand=vcmd)
-        self.threshentry.grid(row=0,column=2,sticky="W",padx=5,pady=5)
+        self.threshentry.grid(row=0,column=1,sticky="W",padx=0,pady=5)
         self.threshentry.insert(0,'5.0')
 # bind the return key so we can change the value on hitting enter in the field
         self.threshentry.bind('<Return>',self.enter_pressed)
         self.enter_pressed('5.0')
 
-        lb2 = Label(frame,text="secs")
-        lb2.grid(row=0,column=3,sticky="W",padx=5,pady=5)
+        lb2 = Label(LongerFrame,text="secs")
+        lb2.grid(row=0,column=2,sticky="W",padx=0,pady=5)
 
 # ButtFrame - teehee! - seriously, it's a frame to contain buttons
         ButtFrame=Frame(frame, borderwidth=1)
@@ -306,10 +311,16 @@ class SC930Chooser(Frame):
         ClearButton.grid(row=0,column=2,sticky='W',padx=5,pady=5)
 
 # tick box for sort
+        TickFrame = Frame(frame)
+        TickFrame.grid(row=1,column=1)
         self.sorted = IntVar()
-        self.sortTick = Checkbutton(frame,text="Sort Results?",variable=self.sorted)
-        self.sortTick.grid(row=1,column=1)
+        self.sortTick = Checkbutton(TickFrame,text="Sort Results?",variable=self.sorted)
+        self.sortTick.grid(row=0,column=0)
         self.sortTick.select()
+
+        self.qryOnly = IntVar()
+        self.qryTick = Checkbutton(TickFrame,text="Qry's only",variable=self.qryOnly)
+        self.qryTick.grid(row=0,column=1,sticky='E')
 
 # filebox is the entry field for the list of files - note set to disabled so user can't edit it
 # (they can select and copy in it though)
@@ -414,7 +425,7 @@ class SC930Chooser(Frame):
     def display_info(self):
         msg='SC930 Long-Running-Query Finder'
         msg = msg + '\n\nby Paul Mason'
-        msg = msg + '\n (c) Actian Corp 2014'
+        msg = msg + '\n (c) Actian Corp 2015'
         msg = msg + '\nSee %s for latest version' % SC930_LRQ_LNK
         msg = msg + '\nThis version %s' % SC930_LRQ_VER
         tkMessageBox.showinfo(title='SC930 LRQ Finder',
@@ -490,7 +501,7 @@ class SC930Chooser(Frame):
 
 # process the files in the file list
         for file in self.filelist:
-            FindLRQ(file,int(NANO_PER_SEC * flt_thresh), Pwin)
+            FindLRQ(file,int(NANO_PER_SEC * flt_thresh), Pwin, bool(self.qryOnly.get()))
 
 # if we actually have a progress bar window, remove it
         if Pwin != None:

@@ -1,4 +1,4 @@
-SC930 LRQ Finder
+SC930 LRQ Finder (v 0.8)
 
 A simple program to find Long Running Queries in SC930 trace files.
 
@@ -8,17 +8,19 @@ A simple program to find Long Running Queries in SC930 trace files.
 
 To Run:
 
-    python <-n> <-r> <-t time> SC930_LRQ.py <filename> [<filename>...]
+    python <-n> <-r> <-q> <-t time> SC930_LRQ.py <filename> [<filename>...]
 
 
 If no arguments are given, then a GUI is launched, otherwise it runs in command line mode and output is to the console.
 Options are:
 
-*-s* means do NOT sort results (by default they are sorted longest to shortest)
+*-n* means do NOT sort results (by default they are sorted longest to shortest)
 
 *-r* means reverse sort (shortest to longest)
 
 *-t* specifies a time threshold in seconds, queries longer than this are considered long-running (default 5.0)
+
+*-q* means "Queries only" i.e. only the record types QRY, REQUERY, QUEL and REQUEL. 
 
 Windows:
 
@@ -34,5 +36,4 @@ ToDO list:
 * search for qrytext
 * 'short' query type ('insert', 'delete' etc)
 * report format (header, filenames etc)
-* filter out 'uninteresting' queries (COMMIT, FETCH etc) - possibly the list of SC930_OQRY
 * bind keys to output window (left, right, home and end) 
