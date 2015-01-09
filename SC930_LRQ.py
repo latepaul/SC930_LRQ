@@ -1,12 +1,23 @@
+#!/usr/bin/env python
+
 __author__ = 'Paul Mason'
 
-
-import sys
 import os
-from Tkinter import *
-import tkFileDialog
-import ScrolledText
-import tkMessageBox
+import sys
+
+# handle user not having tk - a bit hacky but it works for now
+# later I'll split the GUI from the common/CLI code 
+try:
+    from Tkinter import *
+    import tkFileDialog
+    import ScrolledText
+    import tkMessageBox
+    tk_avail = True
+except:
+    tk_avail = False
+    class Frame(object):
+	    pass
+
 from optparse import OptionParser
 
 # use ttk.Progressbar if possible (prettier)
@@ -18,7 +29,7 @@ except:
 
 # SC930_LRQ_VER - version for SC930_LRQ
 # I intend to bump the minor version number for each checked in change.
-SC930_LRQ_VER = '0.9'
+SC930_LRQ_VER = '0.10'
 
 # link for latest version of the code
 SC930_LRQ_LNK = 'http://code.ingres.com/samples/python/SC930_LRQ/'
@@ -252,7 +263,7 @@ def cli_main(argv=sys.argv):
         qword = 'query'
     else:
         qword = 'queries'
-    print "\nFound %d %s that took longer than %9.4f seconds" % (len(LRQ_sorted),qword,options.thresh)
+    print "\nFound %d %s that took longer than %9.6f seconds" % (len(LRQ_sorted),qword,options.thresh)
 
 # Initial window - select files to work on, set threshold and choose whether to sort
 class SC930Chooser(Frame):
@@ -847,6 +858,6 @@ def gui_main():
 # if no arguments then launch the GUI otherwise launch the CLI
 # see also comments in SC930_LRQ_gui
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 1 or tk_avail == False:
         sys.exit(cli_main())
     sys.exit(gui_main())

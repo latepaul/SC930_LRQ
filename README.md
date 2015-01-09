@@ -1,4 +1,4 @@
-SC930 LRQ Finder (v 0.9)
+SC930 LRQ Finder (v 0.10)
 
 A simple program to find Long Running Queries in SC930 trace files.
 
@@ -8,7 +8,7 @@ A simple program to find Long Running Queries in SC930 trace files.
 
 To Run:
 
-    python <-n> <-r> <-q> <-t time> SC930_LRQ.py <filename> [<filename>...]
+    SC930_LRQ.py <-n> <-r> <-q> <-t time> <filename> [<filename>...]
 
 
 If no arguments are given, then a GUI is launched, otherwise it runs in command line mode and output is to the console.
@@ -33,6 +33,8 @@ The latest version of is at http://code.ingres.com/samples/python/SC930_LRQ. To 
 
 ToDO list:
 
+* upper limit
 * search for qrytext
 * 'short' query type ('insert', 'delete' etc)
 * report format (header, filenames etc)
+* separate GUI/CLI/common into separate files
