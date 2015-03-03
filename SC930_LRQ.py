@@ -4,6 +4,7 @@ __author__ = 'Paul Mason'
 
 import os
 import sys
+import datetime
 
 # handle user not having tk - a bit hacky but it works for now
 # later I'll split the GUI from the common/CLI code 
@@ -29,7 +30,7 @@ except:
 
 # SC930_LRQ_VER - version for SC930_LRQ
 # I intend to bump the minor version number for each checked in change.
-SC930_LRQ_VER = '0.10'
+SC930_LRQ_VER = '0.11'
 
 # link for latest version of the code
 SC930_LRQ_LNK = 'http://code.ingres.com/samples/python/SC930_LRQ/'
@@ -99,6 +100,15 @@ def GetTimestamp(tstxt):
     secs = int(t[0])
     nano = int(t[1])
     return ((secs * NANO_PER_SEC) + nano)
+
+# turn a number timestamp into a nice string
+def GetNiceTime(tstxt):
+    t = tstxt.split('/')
+    secs = int(t[0])
+    nano = int(t[1])
+    tsstr=datetime.datetime.utcfromtimestamp(secs).strftime('%Y-%m-%d %H:%M:%S')
+    tsstr += ".%09d" % (nano)
+    return tsstr
 
 # count the lines in a file
 def scanfile(path):
@@ -253,8 +263,8 @@ def cli_main(argv=sys.argv):
         dbmspid = lrq[4]
         sessid = lrq[5]
         print "\nQuery:     ", qtext
-        print "Begin:     ", begin_ts
-        print "End:       ", end_ts
+        print "Begin:      %s (%s)" % (GetNiceTime(begin_ts),begin_ts)
+        print "End:        %s (%s)" % (GetNiceTime(end_ts),end_ts)
         print "Duration:   %020.9f secs" % (float (dur)/NANO_PER_SEC)
         print "DBMS PID:  ", dbmspid
         print "Session ID:", sessid
@@ -624,8 +634,8 @@ def output_win(root):
 
         for record in LRQ_sorted:
             of.write("Query:      %s\n" % record[0])
-            of.write("Begin:      %s\n" % record[1])
-            of.write("End:        %s\n" % record[2])
+            of.write("Begin:      %s (%s)\n" % (GetNiceTime(record[1]),record[1]))
+            of.write("End:        %s (%s)\n" % (GetNiceTime(record[2]),record[2]))
             of.write("Duration:   %020.9f secs\n" % (float(record[3])/NANO_PER_SEC))
             of.write("DBMS PID:   %s\n" % record[4])
             of.write("Session ID: %s\n\n" % record[5])
@@ -669,6 +679,8 @@ def output_win(root):
         Owin.begin_ts.configure(text=txt)
         txt = "%s" % LRQ_sorted[qno][2]
         Owin.end_ts.configure(text=txt)
+        Owin.begin_ts_nice.configure(text=GetNiceTime(LRQ_sorted[qno][1]))
+        Owin.end_ts_nice.configure(text=GetNiceTime(LRQ_sorted[qno][2]))
         txt = "%18.9f" % (float(LRQ_sorted[qno][3]) /NANO_PER_SEC)
         Owin.duration.configure(text=txt)
         txt = "%s" % LRQ_sorted[qno][4]
@@ -762,7 +774,10 @@ def output_win(root):
     l2 = Label(Owin, text="Begin:")
     l2.grid(row=0,column=2,sticky=(W),padx=5)
     Owin.begin_ts = Label(Owin, text="000000/000000", bd=3, relief=RIDGE)
-    Owin.begin_ts.grid(row=0,column=3,sticky=(E),pady=5,padx=5)
+    Owin.begin_ts.grid(row=0,column=4,sticky=(W),pady=5,padx=5)
+    Owin.begin_ts_nice = Label(Owin, text="1900-01-02 03:04:05.000000000", bd=3, relief=RIDGE)
+    Owin.begin_ts_nice.grid(row=0,column=3,sticky=(E),pady=5,padx=5)
+
     l3 = Label(Owin, text="Duration (s):")
     l3.grid(row=1,column=0,sticky=(W),padx=5)
     Owin.duration = Label(Owin, text="0.0", bd=3, relief=RIDGE)
@@ -770,7 +785,9 @@ def output_win(root):
     l4 = Label(Owin, text="End:")
     l4.grid(row=1,column=2,sticky=(W),padx=5)
     Owin.end_ts = Label(Owin, text="000000/000000", bd=3, relief=RIDGE)
-    Owin.end_ts.grid(row=1,column=3,sticky=(E),padx=5)
+    Owin.end_ts.grid(row=1,column=4,sticky=(W),padx=5)
+    Owin.end_ts_nice = Label(Owin, text="1900-01-02 03:04:05.000000000", bd=3, relief=RIDGE)
+    Owin.end_ts_nice.grid(row=1,column=3,sticky=(E),pady=5,padx=5)
     l5 = Label(Owin, text="DBMS Pid:")
     l5.grid(row=2,column=0,sticky=(W),padx=5,pady=5)
     Owin.dbms = Label(Owin, text="dbms", bd=3, relief=RIDGE)
