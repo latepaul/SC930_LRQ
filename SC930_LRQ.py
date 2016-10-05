@@ -4,6 +4,7 @@ __author__ = 'Paul Mason'
 
 import os
 import sys
+import datetime
 
 # handle user not having tk - a bit hacky but it works for now
 # later I'll split the GUI from the common/CLI code 
@@ -29,7 +30,7 @@ except:
 
 # SC930_LRQ_VER - version for SC930_LRQ
 # I intend to bump the minor version number for each checked in change.
-SC930_LRQ_VER = '0.10'
+SC930_LRQ_VER = '0.12'
 
 # link for latest version of the code
 SC930_LRQ_LNK = 'http://code.ingres.com/samples/python/SC930_LRQ/'
@@ -74,14 +75,30 @@ flt_thresh = DEF_THRESH
 LRQ_sorted = LRQ_list = []
 gui = False
 
+# stuff relating to the "graph" that shows where the qry lies on the time scale
+GRAPH_LENGTH = 660
+First_qry = 0
+Last_qry = 0
+
 # ignore a record
 def ignore():
     pass
 
 # hit end of query record
 def EndQry(qtext,begin_ts,end_ts,nano_thresh):
-    dur = GetTimestamp(end_ts) - GetTimestamp(begin_ts)
+    global First_qry, Last_qry
+
+    begin_nano = GetTimestamp(begin_ts)
+    end_nano = GetTimestamp(end_ts)
+    dur = end_nano - begin_nano
     if dur > nano_thresh:
+        if First_qry == 0:
+            First_qry = begin_nano
+        if begin_nano < First_qry:
+            First_qry = begin_nano
+        if end_nano > Last_qry:
+            Last_qry = end_nano
+
         try:
             LRQ_list.append([qtext,begin_ts,end_ts,dur,dbmspid,sessid])
         except:
@@ -99,6 +116,22 @@ def GetTimestamp(tstxt):
     secs = int(t[0])
     nano = int(t[1])
     return ((secs * NANO_PER_SEC) + nano)
+
+# turn a number timestamp into a nice string
+def GetNiceTime(tstxt):
+    t = tstxt.split('/')
+    secs = int(t[0])
+    nano = int(t[1])
+    tsstr=datetime.datetime.utcfromtimestamp(secs).strftime('%Y-%m-%d %H:%M:%S')
+    tsstr += ".%09d" % (nano)
+    return tsstr
+
+def GetNiceTime2(ntime):
+    secs = ntime / NANO_PER_SEC
+    nano = ntime - (secs * NANO_PER_SEC)
+    tsstr=datetime.datetime.utcfromtimestamp(secs).strftime('%Y-%m-%d %H:%M:%S')
+    tsstr += ".%09d" % (nano)
+    return tsstr
 
 # count the lines in a file
 def scanfile(path):
@@ -253,8 +286,8 @@ def cli_main(argv=sys.argv):
         dbmspid = lrq[4]
         sessid = lrq[5]
         print "\nQuery:     ", qtext
-        print "Begin:     ", begin_ts
-        print "End:       ", end_ts
+        print "Begin:      %s (%s)" % (GetNiceTime(begin_ts),begin_ts)
+        print "End:        %s (%s)" % (GetNiceTime(end_ts),end_ts)
         print "Duration:   %020.9f secs" % (float (dur)/NANO_PER_SEC)
         print "DBMS PID:  ", dbmspid
         print "Session ID:", sessid
@@ -439,6 +472,7 @@ class SC930Chooser(Frame):
         msg = msg + '\n (c) Actian Corp 2015'
         msg = msg + '\nSee %s for latest version' % SC930_LRQ_LNK
         msg = msg + '\nThis version %s' % SC930_LRQ_VER
+        msg = msg + '\n(for Keith Bolam)'
         tkMessageBox.showinfo(title='SC930 LRQ Finder',
                                    message=msg)
 
@@ -528,7 +562,11 @@ class SC930Chooser(Frame):
 # sort if required - unlike the CLI we only sort in reverse but since the user can skip to the start
 # and end of the list easily that should be OK
         if self.sorted.get() == 1:
-            LRQ_sorted = sorted(LRQ_list,key=lambda item: item[3], reverse=True)
+            # FIXME: make this an option, "sort by"
+            # sort by query length (original)
+            # LRQ_sorted = sorted(LRQ_list,key=lambda item: item[3], reverse=True)
+            # sort by begin time (Keith)
+            LRQ_sorted = sorted(LRQ_list,key=lambda item: item[1])
             LRQ_list = []
         else:
             LRQ_sorted = LRQ_list
@@ -624,8 +662,8 @@ def output_win(root):
 
         for record in LRQ_sorted:
             of.write("Query:      %s\n" % record[0])
-            of.write("Begin:      %s\n" % record[1])
-            of.write("End:        %s\n" % record[2])
+            of.write("Begin:      %s (%s)\n" % (GetNiceTime(record[1]),record[1]))
+            of.write("End:        %s (%s)\n" % (GetNiceTime(record[2]),record[2]))
             of.write("Duration:   %020.9f secs\n" % (float(record[3])/NANO_PER_SEC))
             of.write("DBMS PID:   %s\n" % record[4])
             of.write("Session ID: %s\n\n" % record[5])
@@ -637,11 +675,14 @@ def output_win(root):
 # close the window and give back focus to the initial window
     def quit_out():
         global LRQ_list, LRQ_sorted
+        global First_qry, Last_qry
 
 # very important - releases memory, these can be big!
         LRQ_list = []
         LRQ_sorted =[]
 
+        First_qry = 0
+        Last_qry = 0
         Owin.grab_release()
         Owin.destroy()
 
@@ -669,12 +710,41 @@ def output_win(root):
         Owin.begin_ts.configure(text=txt)
         txt = "%s" % LRQ_sorted[qno][2]
         Owin.end_ts.configure(text=txt)
+        Owin.begin_ts_nice.configure(text=GetNiceTime(LRQ_sorted[qno][1]))
+        Owin.end_ts_nice.configure(text=GetNiceTime(LRQ_sorted[qno][2]))
         txt = "%18.9f" % (float(LRQ_sorted[qno][3]) /NANO_PER_SEC)
         Owin.duration.configure(text=txt)
         txt = "%s" % LRQ_sorted[qno][4]
         Owin.dbms.configure(text=txt)
         txt = "%s" % LRQ_sorted[qno][5]
         Owin.session.configure(text=txt)
+
+# draw line for current query
+        begin_nano = GetTimestamp(LRQ_sorted[qno][1])
+        end_nano = GetTimestamp(LRQ_sorted[qno][2])
+
+        begin_pos = (begin_nano - First_qry) * (GRAPH_LENGTH - 10)
+        begin_pos =(begin_pos / (Last_qry - First_qry)) + 5
+        end_pos = (end_nano - First_qry) * (GRAPH_LENGTH - 10)
+        end_pos =(end_pos / (Last_qry - First_qry)) + 5
+
+        # print "Qry: %d" % qno
+        # print "Begin: %s (%s)" % (LRQ_sorted[qno][1], GetNiceTime(LRQ_sorted[qno][1]))
+        # print "End:   %s (%s)" % (LRQ_sorted[qno][2], GetNiceTime(LRQ_sorted[qno][2]))
+        # print "Duration: %6.2f" % (float(LRQ_sorted[qno][3]) /NANO_PER_SEC)
+        # print "Range:"
+        # print "Begin: %s (%s)" % (First_qry, GetNiceTime2(First_qry))
+        # print "End:   %s (%s)" % (Last_qry, GetNiceTime2(Last_qry))
+        # print "Duration: %6.2f" % ((Last_qry - First_qry) / NANO_PER_SEC)
+        #
+        # print "Bar for this query (%s - %s)" % (begin_pos, end_pos)
+
+        Owin.graphcanv.delete(Owin.qline)
+        Owin.graphcanv.delete(Owin.qbar1)
+        Owin.graphcanv.delete(Owin.qbar2)
+        Owin.qline = Owin.graphcanv.create_line(begin_pos, 15,end_pos,15,fill="Red", width=2)
+        Owin.qbar1 = Owin.graphcanv.create_line(begin_pos, 13,begin_pos,18,fill="Red", width=2)
+        Owin.qbar2 = Owin.graphcanv.create_line(end_pos, 13,end_pos,18,fill="Red",width=2)
 
 # move to the next query - i.e. the right button
     def Right():
@@ -762,7 +832,10 @@ def output_win(root):
     l2 = Label(Owin, text="Begin:")
     l2.grid(row=0,column=2,sticky=(W),padx=5)
     Owin.begin_ts = Label(Owin, text="000000/000000", bd=3, relief=RIDGE)
-    Owin.begin_ts.grid(row=0,column=3,sticky=(E),pady=5,padx=5)
+    Owin.begin_ts.grid(row=0,column=4,sticky=(W),pady=5,padx=5)
+    Owin.begin_ts_nice = Label(Owin, text="1900-01-02 03:04:05.000000000", bd=3, relief=RIDGE)
+    Owin.begin_ts_nice.grid(row=0,column=3,sticky=(E),pady=5,padx=5)
+
     l3 = Label(Owin, text="Duration (s):")
     l3.grid(row=1,column=0,sticky=(W),padx=5)
     Owin.duration = Label(Owin, text="0.0", bd=3, relief=RIDGE)
@@ -770,7 +843,9 @@ def output_win(root):
     l4 = Label(Owin, text="End:")
     l4.grid(row=1,column=2,sticky=(W),padx=5)
     Owin.end_ts = Label(Owin, text="000000/000000", bd=3, relief=RIDGE)
-    Owin.end_ts.grid(row=1,column=3,sticky=(E),padx=5)
+    Owin.end_ts.grid(row=1,column=4,sticky=(W),padx=5)
+    Owin.end_ts_nice = Label(Owin, text="1900-01-02 03:04:05.000000000", bd=3, relief=RIDGE)
+    Owin.end_ts_nice.grid(row=1,column=3,sticky=(E),pady=5,padx=5)
     l5 = Label(Owin, text="DBMS Pid:")
     l5.grid(row=2,column=0,sticky=(W),padx=5,pady=5)
     Owin.dbms = Label(Owin, text="dbms", bd=3, relief=RIDGE)
@@ -780,15 +855,30 @@ def output_win(root):
     Owin.session = Label(Owin, text="session", bd=3, relief=RIDGE)
     Owin.session.grid(row=2,column=3,padx=5,sticky=(E))
 
+# add canvas to draw graph on
+    Owin.graphcanv = Canvas(Owin,width=GRAPH_LENGTH,height=25)
+    Owin.graphcanv.grid(row=3,column=0, columnspan=5)
+
+# add a line for the scale
+    Owin.graphcanv.create_line(5,20,GRAPH_LENGTH - 5,20,width=2)
+    Owin.graphcanv.create_line(5,20,5,15,width=2)
+    Owin.graphcanv.create_line(GRAPH_LENGTH - 5,20,GRAPH_LENGTH - 5,15,width=2)
+
+# add a query
+    Owin.qline = Owin.graphcanv.create_line(100, 15,110,15)
+    Owin.qbar1 = Owin.graphcanv.create_line(100, 13,100,18)
+    Owin.qbar2 = Owin.graphcanv.create_line(110, 13,110,18)
+
+
 # qrybox is where we display the query text. It's oversized so it expands if the window is re-sized
 # and disabled so it can't be changed - though text can be selected and copied
     Owin.qrybox = ScrolledText.ScrolledText(Owin,width=250,height=50)
-    Owin.qrybox.grid(row=3,column=0,padx=5,columnspan=5)
+    Owin.qrybox.grid(row=4,column=0,padx=5,columnspan=5)
     Owin.qrybox.configure(state='disabled')
 
 # create a frame for our navigation buttons
     ButtFrame1 = Frame(Owin,relief=SUNKEN, borderwidth=1)
-    ButtFrame1.grid(row=4,column=1,padx=5,pady=5,columnspan=3)
+    ButtFrame1.grid(row=5,column=1,padx=5,pady=5,columnspan=3)
     FirstButton = Button(ButtFrame1, text = "<<", command=First)
     FirstButton.grid(row=0,column=0,padx=5,pady=5)
     LeftButton = Button(ButtFrame1,text="<",command=Left)
@@ -800,7 +890,7 @@ def output_win(root):
 
 # create a frame for the other two buttown - save and close
     ButtFrame2 = Frame(Owin,relief=SUNKEN, borderwidth=1)
-    ButtFrame2.grid(row=4,column=4,padx=5,pady=5,sticky=(E))
+    ButtFrame2.grid(row=5,column=4,padx=5,pady=5,sticky=(E))
     saveButton = Button(ButtFrame2, text="save to file", command=write_to_file)
     saveButton.grid(row=0,column=0,padx=5,pady=5)
     quitButton = Button(ButtFrame2, text="close", command=quit_out)
@@ -815,12 +905,13 @@ def output_win(root):
     Owin.rowconfigure(0,weight=0)
     Owin.rowconfigure(1,weight=0)
     Owin.rowconfigure(2,weight=0)
-    Owin.rowconfigure(3,weight=1)
-    Owin.rowconfigure(4,weight=0)
+    Owin.rowconfigure(3,weight=0)
+    Owin.rowconfigure(4,weight=1)
+    Owin.rowconfigure(5,weight=0)
 
 # don't want the user making it so the fields and buttons can't fit
 # based on my screen, with my fonts on Windows - may vary elsewhere
-    Owin.minsize(660,175)
+    Owin.minsize(GRAPH_LENGTH,200)
 
 # the number of queries in our list
     output_win.num_lrq = len(LRQ_sorted)
